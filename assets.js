@@ -1,0 +1,1 @@
+window.QISHU_ASSETS={store:'assets/boutique-interior.jpg',coat:'assets/beige-coat-editorial.jpg',knit:'assets/knitwear-texture.jpg',dress:'assets/neutral-clothing-rack.jpg',shirt:'assets/neutral-clothing-rack.jpg',pants:'assets/neutral-clothing-rack.jpg',style:'assets/beige-knit-set.jpg'};
