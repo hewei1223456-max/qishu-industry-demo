@@ -1,6 +1,7 @@
 import { get, post, patch, put, del, itemsOf } from '../core/api.js';
 import { state, refresh } from '../core/state.js';
 import { icon } from '../components/icons.js';
+import { isSupplierCertificate, certificateReviewPath } from '../core/certificate-navigation.js';
 import {
   esc,
   badge,
@@ -152,12 +153,9 @@ export async function overview() {
   const certs = queues[0].status === 'fulfilled' ? itemsOf(queues[0].value) : [],
     content = queues[1].status === 'fulfilled' ? itemsOf(queues[1].value) : [],
     jobs = queues[2].status === 'fulfilled' ? itemsOf(queues[2].value) : [];
+  const pendingCerts = certs.filter((item) => !['approved', 'rejected', 'deleted'].includes(item.status));
   const stats = [
-    [
-      '待审经营资质',
-      certs.filter((x) => !['approved', 'rejected'].includes(x.status)).length,
-      '/admin/users'
-    ],
+    ['待审厂家资质', pendingCerts.filter(isSupplierCertificate).length, certificateReviewPath('supplier')],
     ['待审核内容', content.filter((x) => x.status === 'pending').length, '/admin/content'],
     [
       'AI待处理与失败',
@@ -173,13 +171,13 @@ export async function overview() {
         '平台运营工作台 · 测试数据库实时记录',
         '<a class="btn light" href="#/account">本后台账号</a>'
       ) +
-      `<div class="admin-stats">${stats.map(([n, v, p]) => `<a class="panel" href="#${p}"><span>${n}</span><strong>${v}</strong><small>查看处理 ${icon('arrow')}</small></a>`).join('')}</div><div class="admin-overview-grid"><section class="panel table-panel"><div class="table-heading"><h2>待审核主体</h2><a class="text-link" href="#/admin/users">全部审核 ${icon('arrow')}</a></div>${
-        certs.length
-          ? `<div class="queue-list">${certs
+      `<div class="admin-stats">${stats.map(([n, v, p]) => `<a class="panel" href="#${p}"><span>${n}</span><strong>${v}</strong><small>查看处理 ${icon('arrow')}</small></a>`).join('')}</div><div class="admin-overview-grid"><section class="panel table-panel"><div class="table-heading"><h2>厂家与店主资质待审</h2><div><a class="text-link" href="#${certificateReviewPath('supplier')}">厂家资质审核</a> · <a class="text-link" href="#${certificateReviewPath('owner')}">店主资质审核</a></div></div>${
+        pendingCerts.length
+          ? `<div class="queue-list">${pendingCerts
               .slice(0, 5)
               .map(
                 (x) =>
-                  `<a href="#/admin/users"><div><strong>${esc(x.company || x.companyName || x.id)}</strong><small>${esc(x.scope || '经营范围待核对')}</small></div>${badge(x.status || 'pending', 'subtle')}</a>`
+                  `<a href="#${certificateReviewPath(x)}"><div><strong>${esc(x.company || x.companyName || x.id)}</strong><small>${esc(x.scope || '经营范围待核对')}</small></div>${badge(x.status || 'pending', 'subtle')}</a>`
               )
               .join('')}</div>`
           : empty('暂无待审申请', '提交真实测试资料后会进入此队列。')
@@ -283,7 +281,8 @@ function resourceTabs(resource, ctx) {
     ];
   if (area === 'users')
     entries = [
-      ['certifications', '资质审核'],
+      ['supplier-certifications', '厂家资质审核'],
+      ['owner-certifications', '店主资质审核'],
       ['buyers', '公开店主资料'],
       ['admins', '管理员授权']
     ];

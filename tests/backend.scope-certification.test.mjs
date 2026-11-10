@@ -55,6 +55,7 @@ async function fixture(t, options = {}) {
 
 test('front/back sessions isolate cookies and Bearer, frontend admin cannot read management data', async (t) => {
   const f = await fixture(t);
+  assert.equal((await fetch(f.base + '/app.js')).headers.get('cache-control'), 'no-cache');
   const owner = await f.login('owner'),
     admin = await f.login('admin', 'back'),
     frontAdmin = await f.login('admin', 'front');
@@ -277,6 +278,40 @@ test('supplier certification uses real media inspection, distinct private photos
   assert.equal(approved.status, 200);
   assert.equal(f.app.db.get('users', 'supplier-01').verified, true);
   const backend = (await f.request('/admin/certifications/' + item.id, 'GET', undefined, admin)).json.item;
+  const videoBytes = readFileSync(long),
+    videoUrl = f.base + backend.materials.venueVideo.url;
+  const rangeFetch = (range) =>
+    fetch(videoUrl, { headers: { Authorization: `Bearer ${admin}`, Range: range } });
+  const first = await rangeFetch('bytes=0-1');
+  assert.equal(first.status, 206);
+  assert.equal(first.headers.get('accept-ranges'), 'bytes');
+  assert.equal(first.headers.get('content-range'), `bytes 0-1/${videoBytes.length}`);
+  assert.equal(first.headers.get('content-length'), '2');
+  assert.deepEqual(Buffer.from(await first.arrayBuffer()), videoBytes.subarray(0, 2));
+  const suffix = await rangeFetch('bytes=-3');
+  assert.equal(suffix.status, 206);
+  assert.deepEqual(Buffer.from(await suffix.arrayBuffer()), videoBytes.subarray(-3));
+  const tail = await rangeFetch(`bytes=${videoBytes.length - 2}-`);
+  assert.equal(tail.status, 206);
+  assert.equal(tail.headers.get('content-length'), '2');
+  assert.deepEqual(Buffer.from(await tail.arrayBuffer()), videoBytes.subarray(-2));
+  for (const range of [
+    `bytes=${videoBytes.length}-`,
+    'bytes=3-1',
+    'bytes=-0',
+    'bytes=0-1,3-4',
+    'items=0-1',
+    ''
+  ]) {
+    const rejected = await rangeFetch(range);
+    assert.equal(rejected.status, 416);
+    assert.equal(rejected.headers.get('content-range'), `bytes */${videoBytes.length}`);
+    await rejected.arrayBuffer();
+  }
+  const anonymousRange = await fetch(videoUrl, { headers: { Range: 'bytes=0-1' } });
+  assert.equal(anonymousRange.status, 401);
+  assert.equal(anonymousRange.headers.get('content-range'), null);
+  assert.equal(anonymousRange.headers.get('accept-ranges'), null);
   assert.equal(
     (
       await fetch(f.base + backend.materials.venueVideo.url, {

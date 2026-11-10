@@ -16,6 +16,7 @@ Page({
     error: '',
     notice: '',
     items: [],
+    applicationPending: false,
     profile: {},
     operationNeedsText: '',
     publicContact: { wechat: '', phone: '', qrUrl: '', consent: false }
@@ -28,6 +29,9 @@ Page({
   back() {
     ui.platform.back('/pages/me/index');
   },
+  browsePublic() {
+    ui.platform.tab('/pages/info/index');
+  },
   async load() {
     try {
       const r = await ui.api.get('/certifications');
@@ -39,6 +43,7 @@ Page({
         failed: '识别未完成，仍待人工'
       };
       this.setData({
+        applicationPending: !!(ui.list(r)[0] && ui.list(r)[0].status === 'pending'),
         items: ui.list(r).map((item) =>
           Object.assign({}, item, {
             ocrStatusText: labels[item.precheck && item.precheck.ocrStatus] || '待人工审核',

@@ -48,6 +48,7 @@ import { createMediaPreviews } from './previews.js';
 import { startCertificatePrecheck, certificationView } from './certification.js';
 import { sniffMime } from './file-types.js';
 import { contactOf, saveContact } from './contact.js';
+import { sendAuthorizedFile } from './file-response.js';
 import {
   migrateSupplierCertificationPolicy,
   validateCertificateMaterials,
@@ -847,16 +848,14 @@ export function createApp(options = {}) {
       }
       const filename = join(uploadDir, file.diskName);
       if (!existsSync(filename)) throw new AppError(404, 'NOT_FOUND', '文件不存在。');
-      res.writeHead(200, {
+      await sendAuthorizedFile(req, res, filename, {
         'Content-Type': file.mime,
-        'Content-Length': file.size,
         'Cache-Control': file.public ? 'public,max-age=300' : 'private,no-store',
         'Content-Disposition':
           file.mime.startsWith('image/') || file.mime.startsWith('audio/') || file.mime.startsWith('video/')
             ? 'inline'
             : 'attachment'
       });
-      createReadStream(filename).pipe(res);
       return;
     }
     if (parts[1] === 'certifications') {
@@ -1014,7 +1013,9 @@ export function createApp(options = {}) {
     res.writeHead(200, {
       'Content-Type': MIME[extname(file)] || 'application/octet-stream',
       'Content-Length': size,
-      'Cache-Control': extname(file) === '.html' ? 'no-cache' : 'public,max-age=60'
+      'Cache-Control': ['.html', '.js', '.css', '.json'].includes(extname(file))
+        ? 'no-cache'
+        : 'public,max-age=60'
     });
     createReadStream(file).pipe(res);
   }

@@ -1,0 +1,55 @@
+{
+  "timestamp": "2026-11-10T13:06:15.812Z",
+  "change": "supplier-onboarding-after-login",
+  "addedScenarioCount": 5,
+  "previousValidationUnchanged": true,
+  "previousValidationSha256": "ef1f593ca6a280df7cc826f22937b7152f7d0d5cdb8c72f1161284811bd0eec5",
+  "source": {
+    "check": "native-source-static",
+    "passed": true,
+    "scripts": 16,
+    "jsons": 15,
+    "templates": 11,
+    "handlers": 144,
+    "pages": 10,
+    "errors": [],
+    "notVerified": [
+      "WeChat DevTools compiler",
+      "WXML runtime rendering",
+      "real device",
+      "real WeChat login",
+      "production domain"
+    ]
+  },
+  "registration": {
+    "check": "native-registration-http",
+    "passed": true,
+    "checks": [
+      "登录仅三个身份，无旧场景切换入口",
+      "管理员意向登录仅建立基础身份，待平台授权（官方HTTP传输为mock）",
+      "管理员待授权登录不会跳入经营认证流程",
+      "前台管理员会话不能跨入独立后台",
+      "未认证厂家完成实际登录后直达材料页，认证表单位于经营资料之前",
+      "厂家缺项检查覆盖执照、30秒视频及5张照片",
+      "相机入口与10秒视频伪报999秒的服务端拒绝",
+      "五张照片满额后拒绝继续选择，不漂移为5至10张",
+      "真实31秒视频及五张不同照片私有上传，等待人工和电话回访",
+      "提交文件ID，客户端时长不作为认证证据",
+      "私有材料链接游客被拒，本人Bearer下载临时副本预览",
+      "认证核验专用240秒超时，普通请求不变慢",
+      "未认证或待审厂家仍有有限公开浏览入口",
+      "后台测试夹具确认审核后，已认证厂家登录保持原导航",
+      "店主登录保留我的入口",
+      "更换身份清理已下载的私有预览副本",
+      "店主认证不增加厂家视频与照片要求",
+      "所有原生请求与上传固定前台scope"
+    ],
+    "limits": [
+      "Synthetic 64px PNG and real generated 10/31-second MP4 fixtures, not business proof",
+      "wx UI/auth/navigation mocked; no DevTools or device",
+      "Large-upload limit is not a 300MB throughput test",
+      "No real WeChat credentials",
+      "Telephone review is an isolated admin test fixture; no real call was made"
+    ]
+  }
+}

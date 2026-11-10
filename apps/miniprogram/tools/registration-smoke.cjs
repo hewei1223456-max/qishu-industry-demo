@@ -11,6 +11,7 @@ const state = new Map(),
   requests = [],
   chosen = [],
   checks = [];
+const navigation = [];
 let app,
   definition,
   materialTempDir = '',
@@ -82,8 +83,8 @@ global.wx = {
       }))
     });
   },
-  navigateTo: (o) => o.success({}),
-  switchTab: (o) => o.success({}),
+  navigateTo: (o) => {navigation.push({type:'open',url:o.url});o.success({});},
+  switchTab: (o) => {navigation.push({type:'tab',url:o.url});o.success({});},
   navigateBack: (o) => o.success({}),
   login: (o) => o.success({ code: 'NOT_REAL_CODE' }),
   showModal: (o) => o.success({ confirm: true, cancel: false }),
@@ -199,7 +200,9 @@ async function main() {
     );
     assert(!fs.readFileSync(path.join(nativeRoot, 'pages/me/index.wxml'), 'utf8').includes('切换演示身份'));
     ok('登录仅三个身份，无旧场景切换入口');
-    await app.wechatLogin('admin');
+    login.setData({authRole:'admin'});
+    await login.wechat();
+    assert(!login.data.error,login.data.error);
     assert.equal(app.globalData.user.role, 'owner');
     assert.equal(app.globalData.adminAuthorizationRequired, true);
     assert.notEqual(server.db.get('users', app.globalData.user.id).role, 'admin');
@@ -208,6 +211,8 @@ async function main() {
     assert(pending.data.adminPending);
     assert.equal(pending.data.identityLabel, '管理员待授权');
     ok('管理员意向登录仅建立基础身份，待平台授权（官方HTTP传输为mock）');
+    assert.equal(navigation.at(-1).url,'/pages/me/index');
+    ok('管理员待授权登录不会跳入经营认证流程');
     await app.demoLogin('admin');
     assert.equal(app.globalData.user.role, 'admin');
     let blocked = false;
@@ -222,7 +227,13 @@ async function main() {
     });
     assert.equal(cross.status, 401);
     ok('前台管理员会话不能跨入独立后台');
-    await app.demoLogin('supplier');
+    await login.demo({currentTarget:{dataset:{role:'supplier'}}});
+    assert(!login.data.error,login.data.error);
+    assert.equal(navigation.at(-1).url,'/pages/certify/index?onboarding=1');
+    assert.equal(app.globalData.user.verified,false);
+    const certifyMarkup=fs.readFileSync(path.join(nativeRoot,'pages/certify/index.wxml'),'utf8');
+    assert(certifyMarkup.indexOf('公司 / 个体主体名称')<certifyMarkup.indexOf('用于理解门店条件和推荐偏好'));
+    ok('未认证厂家完成实际登录后直达材料页，认证表单位于经营资料之前');
     const supplierId = app.globalData.user.id,
       cert = page('certify');
     ui.sync(cert, -1);
@@ -270,6 +281,7 @@ async function main() {
     assert.equal(application.videoVerification.status, 'verified');
     assert(application.videoVerification.durationSeconds >= 30);
     assert.equal(application.phoneReview.status, 'pending');
+    assert.equal(cert.data.applicationPending, true);
     assert.equal(server.db.get('users', supplierId).verified, false);
     const savedIds = [
       cert.data.license.id,
@@ -312,7 +324,22 @@ async function main() {
         .every((r) => r.timeout === 600000)
     );
     ok('认证核验专用240秒超时，普通请求不变慢');
-    await app.demoLogin('owner');
+    cert.browsePublic();
+    assert.equal(navigation.at(-1).url,'/pages/info/index');
+    ok('未认证或待审厂家仍有有限公开浏览入口');
+    async function backRequest(pathname,method,body,token){const response=await fetch(api.base()+'/api'+pathname,{method,headers:{'Content-Type':'application/json','X-Qishu-Scope':'back',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});const data=await response.json();assert(response.ok,JSON.stringify(data));return data;}
+    const backAdmin=await backRequest('/auth/demo','POST',{role:'admin',scope:'back'});
+    await backRequest('/admin/certifications/'+application.id+'/phone-review','POST',{result:'confirmed',phone:'18800000000',note:'隔离测试夹具模拟已接通且一致，未实际拨打电话',confirmedCall:true},backAdmin.token);
+    await backRequest('/admin/certifications/'+application.id,'PATCH',{status:'approved'},backAdmin.token);
+    await login.demo({currentTarget:{dataset:{role:'supplier'}}});
+    assert(!login.data.error,login.data.error);
+    assert.equal(app.globalData.user.verified,true);
+    assert.equal(navigation.at(-1).url,'/pages/me/index');
+    ok('后台测试夹具确认审核后，已认证厂家登录保持原导航');
+    await login.demo({currentTarget:{dataset:{role:'owner'}}});
+    assert(!login.data.error,login.data.error);
+    assert.equal(navigation.at(-1).url,'/pages/me/index');
+    ok('店主登录保留我的入口');
     assert(!fs.existsSync(reopened.data.venuePhotos[0].localPath));
     ok('更换身份清理已下载的私有预览副本');
     const owner = page('certify');
@@ -342,6 +369,7 @@ async function main() {
             'wx UI/auth/navigation mocked; no DevTools or device',
             'Large-upload limit is not a 300MB throughput test',
             'No real WeChat credentials'
+          ,'Telephone review is an isolated admin test fixture; no real call was made'
           ]
         },
         null,

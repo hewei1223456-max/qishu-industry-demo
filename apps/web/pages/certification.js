@@ -3,6 +3,12 @@ import { state, refresh } from '../core/state.js';
 import { isBackWorkspace, privateMediaUrl } from '../core/workspace.js';
 import { icon } from '../components/icons.js';
 import {
+  isSupplierCertificate,
+  certificateReviewPath,
+  certificateReviewSelection,
+  filterCertificateReviews
+} from '../core/certificate-navigation.js';
+import {
   esc,
   img,
   badge,
@@ -31,10 +37,7 @@ const videoLabel = (status) =>
 const reviewLabel = (status) =>
   ({ passed: '电话核对通过', failed: '电话核对未通过', pending: '待电话回访' })[status] || '待电话回访';
 const fileUrl = (file) => file?.url || (file?.id ? '/api/files/' + encodeURIComponent(file.id) : '');
-const supplierApplication = (application) =>
-  application.applicantRole === 'supplier' ||
-  !!application.venueVideoFileId ||
-  application.missingFields?.some((value) => /场所|视频|照片|电话/.test(String(value)));
+const supplierApplication = isSupplierCertificate;
 
 export function certificateApprovalReady(application) {
   const complete = Array.isArray(application.missingFields) && application.missingFields.length === 0;
@@ -83,6 +86,17 @@ export async function certification() {
     };
   const supplier = state.user?.role === 'supplier';
   const applications = itemsOf(await get('/certifications'));
+  const latest = [...applications].sort(
+    (a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0)
+  )[0];
+  const certificationState =
+    state.user?.verified === true
+      ? '已完成资质审核'
+      : latest?.status === 'pending'
+        ? '已提交，待人工审核'
+        : latest?.status === 'rejected'
+          ? '审核未通过，请查看原因并重新提交'
+          : '待提交或补充经营资料';
   const identityLabels = isBackWorkspace()
     ? [
         ['supplier', '厂家后台'],
@@ -99,7 +113,7 @@ export async function certification() {
         supplier ? '厂家经营主体认证' : '店主经营主体认证',
         '材料上传后由服务端校验，AI辅助预审，平台人工终审。'
       ) +
-      `<div class="label-row certification-identities">${identityLabels.map(([role, label]) => badge(label, state.user?.role === role ? 'positive' : 'subtle')).join('')}<a class="text-link tiny" href="#/login">更换身份请返回本端登录</a></div><div class="two-columns"><form class="panel" id="certification-form"><h2>提交经营资料</h2>${field('企业或店铺主体名称', 'company', state.user?.companyName || '', 'text', 'required')}${field('营业执照经营范围', 'scope', '', 'textarea', 'required rows="4" placeholder="例如：服装批发、服装零售"')}<label class="field"><span>营业执照图片</span><input type="file" id="license-file" accept="image/jpeg,image/png,image/webp" required><small>证照私有保存，不进入公开内容。</small></label><div id="license-preview"></div>${supplier ? `<section class="venue-material-form"><h3>经营场所材料</h3><p class="muted small">档口、展厅、公司、车间任选，视频应能看清实际经营场所。</p><label class="field"><span>场所视频 · 至少30秒</span><input type="file" id="venue-video-file" accept="video/mp4,video/webm,video/quicktime" required><small>建议MP4，单文件不超过300MB。浏览器只作即时预检，最终时长由服务端读取。</small></label><p class="tiny muted" id="venue-video-status">尚未选择视频。</p><div id="venue-video-preview"></div><label class="field"><span>5张不同的场所照片</span><input type="file" id="venue-photo-files" accept="image/jpeg,image/png,image/webp" multiple required><small>请选择5张不同的照片，服务端还会检查文件归属和真实图片。</small></label><div class="certificate-photos" id="venue-photo-preview"></div></section>` : ''}<label class="check-field"><input type="checkbox" required><span>我确认已获主体授权，并同意平台在审核范围内处理这些私有材料。</span></label><div class="notice">材料仅本人及有审核权限的工作人员可查看。文件上传、视频时长校验或AI识别完成，都不等于审核通过。</div><button class="btn primary full">提交人工审核</button><p class="tiny muted" id="certification-upload-progress"></p></form><section class="panel"><h2>审核记录</h2>${applications.length ? applications.map((application) => `<article class="audit-record" data-application="${esc(application.id)}"><div class="section-line"><strong>${esc(application.company)}</strong>${badge(application.status || 'pending', 'subtle')}</div><p>${esc(application.scope)}</p>${application.reason ? `<p class="small muted">${esc(application.reason)}</p>` : ''}${certificateMaterials(application)}${certificationPrecheck(application)}</article>`).join('') : empty('尚未提交材料', '提交后可查看服务端校验、AI预审和人工审核状态。')}</section></div>`,
+      `<div class="label-row certification-identities">${identityLabels.map(([role, label]) => badge(label, state.user?.role === role ? 'positive' : 'subtle')).join('')}<a class="text-link tiny" href="#/login">更换身份请返回本端登录</a></div><section class="notice" data-certification-state><div><strong>当前状态：${esc(certificationState)}</strong><p>${supplier ? '必交材料：营业执照、至少30秒的真实经营场所视频、5张不同的场所照片。' : '必交材料：营业执照与经营资料。'}填写并上传后，必须点击“提交人工审核”才会进入${supplier ? '厂家' : '店主'}资质审核队列。</p>${!isBackWorkspace() ? '<a class="text-link" href="#/info">暂不提交，继续浏览有限公开信息 →</a>' : ''}</div></section><div class="two-columns"><form class="panel" id="certification-form"><h2>提交经营资料</h2>${field('企业或店铺主体名称', 'company', state.user?.companyName || '', 'text', 'required')}${field('营业执照经营范围', 'scope', '', 'textarea', 'required rows="4" placeholder="例如：服装批发、服装零售"')}<label class="field"><span>营业执照图片</span><input type="file" id="license-file" accept="image/jpeg,image/png,image/webp" required><small>证照私有保存，不进入公开内容。</small></label><div id="license-preview"></div>${supplier ? `<section class="venue-material-form"><h3>经营场所材料</h3><p class="muted small">档口、展厅、公司、车间任选，视频应能看清实际经营场所。</p><label class="field"><span>场所视频 · 至少30秒</span><input type="file" id="venue-video-file" accept="video/mp4,video/webm,video/quicktime" required><small>建议MP4，单文件不超过300MB。浏览器只作即时预检，最终时长由服务端读取。</small></label><p class="tiny muted" id="venue-video-status">尚未选择视频。</p><div id="venue-video-preview"></div><label class="field"><span>5张不同的场所照片</span><input type="file" id="venue-photo-files" accept="image/jpeg,image/png,image/webp" multiple required><small>请选择5张不同的照片，服务端还会检查文件归属和真实图片。</small></label><div class="certificate-photos" id="venue-photo-preview"></div></section>` : ''}<label class="check-field"><input type="checkbox" required><span>我确认已获主体授权，并同意平台在审核范围内处理这些私有材料。</span></label><div class="notice">材料仅本人及有审核权限的工作人员可查看。文件上传、视频时长校验或AI识别完成，都不等于审核通过。</div><button class="btn primary full">提交人工审核</button><p class="tiny muted" id="certification-upload-progress"></p></form><section class="panel"><h2>审核记录</h2>${applications.length ? applications.map((application) => `<article class="audit-record" data-application="${esc(application.id)}"><div class="section-line"><strong>${esc(application.company)}</strong>${badge(application.status || 'pending', 'subtle')}</div><p>${esc(application.scope)}</p>${application.reason ? `<p class="small muted">${esc(application.reason)}</p>` : ''}${certificateMaterials(application)}${certificationPrecheck(application)}</article>`).join('') : empty('尚未提交材料', '提交后可查看服务端校验、AI预审和人工审核状态。')}</section></div>`,
     bind(root) {
       let license = null,
         venueVideo = null,
@@ -216,14 +230,40 @@ function canReview() {
   );
 }
 
-export async function reviewCertifications() {
-  const applications = itemsOf(await get('/admin/certifications'));
+export async function reviewCertifications(ctx = {}) {
+  const all = itemsOf(await get('/admin/certifications'));
+  const selection = certificateReviewSelection(ctx.query);
+  const applications = filterCertificateReviews(all, selection);
+  const supplierCount = all.filter(isSupplierCertificate).length,
+    ownerCount = all.length - supplierCount;
+  const title = selection.role === 'supplier' ? '厂家资质审核' : '店主资质审核';
+  const tabs = [
+    ['supplier', '厂家资质审核', supplierCount],
+    ['owner', '店主资质审核', ownerCount]
+  ];
+  const submitUrl = '/?workspace=front#/register?role=' + selection.role;
   return {
     html:
-      pageHead('经营资质审核', '查看私有材料、服务端校验和电话回访记录，再作人工决定。') +
-      '<div class="sub-tabs"><a class="active" href="#/admin/users">资质审核</a><a href="#/admin/users?tab=buyers">公开店主资料</a><a href="#/admin/users?tab=admins">管理员授权</a></div>' +
-      `<section class="panel table-panel"><div class="table-heading"><h2>待处理与历史申请</h2><span>${applications.length} 条</span></div>${applications.length ? `<div class="table-scroll"><table><thead><tr><th>经营主体</th><th>材料校验</th><th>电话回访</th><th>人工审核</th><th>操作</th></tr></thead><tbody>${applications.map((application) => `<tr><td><strong>${esc(application.company)}</strong><small>${esc(application.scope)}</small></td><td>${badge(application.missingFields?.length ? '材料待补齐' : '查看服务端核验', application.missingFields?.length ? 'warning' : 'subtle')}<small>${esc(supplierApplication(application) ? videoLabel(application.videoVerification?.status) : '店主营业执照材料')}</small></td><td>${supplierApplication(application) ? badge(reviewLabel(application.phoneReview?.status), application.phoneReview?.status === 'passed' ? 'positive' : 'warning') : badge('按店主材料审核', 'subtle')}</td><td>${badge(application.status || 'pending')}</td><td><button class="btn small" data-review-application="${esc(application.id)}">查看材料与回访</button></td></tr>`).join('')}</tbody></table></div>` : empty('暂无认证申请', '厂家或店主提交后会在这里进入审核队列。')}</section>`,
+      pageHead(title, '查看该类经营主体的私有材料、服务端核验与人工审核记录。') +
+      `<div class="sub-tabs" aria-label="用户与主体分类">${tabs.map(([role, label, count]) => `<a class="${selection.role === role ? 'active' : ''}" href="#${certificateReviewPath(role)}">${label}（${count}）</a>`).join('')}<a href="#/admin/users?tab=buyers">公开店主资料</a><a href="#/admin/users?tab=admins">管理员授权</a></div><form class="panel buyer-filters" id="certificate-review-filters"><label class="search-field">${icon('search')}<input name="query" aria-label="搜索经营主体" placeholder="搜索主体名称、经营范围" value="${esc(selection.query)}"></label><label><span>审核状态</span><select name="status"><option value="">全部状态</option>${[
+        ['pending', '待审核'],
+        ['needs_info', '待补材料'],
+        ['rejected', '未通过'],
+        ['approved', '已通过']
+      ]
+        .map(
+          ([value, label]) =>
+            `<option value="${value}" ${selection.status === value ? 'selected' : ''}>${label}</option>`
+        )
+        .join(
+          ''
+        )}</select></label><button class="btn primary">筛选</button><a class="text-link" href="#${certificateReviewPath(selection.role)}">重置</a></form><section class="panel table-panel"><div class="table-heading"><h2>${title}申请</h2><span>当前 ${applications.length} / 本类 ${selection.role === 'supplier' ? supplierCount : ownerCount} 条</span></div>${applications.length ? `<div class="table-scroll"><table><thead><tr><th>经营主体</th><th>材料校验</th><th>电话回访</th><th>人工审核</th><th>操作</th></tr></thead><tbody>${applications.map((application) => `<tr><td><strong>${esc(application.company)}</strong><small>${esc(application.scope)}</small></td><td>${badge(application.missingFields?.length ? '材料待补齐' : '查看服务端核验', application.missingFields?.length ? 'warning' : 'subtle')}<small>${esc(supplierApplication(application) ? videoLabel(application.videoVerification?.status) : '店主营业执照材料')}</small></td><td>${supplierApplication(application) ? badge(reviewLabel(application.phoneReview?.status), application.phoneReview?.status === 'passed' ? 'positive' : 'warning') : badge('按店主材料审核', 'subtle')}</td><td>${badge(application.status || 'pending')}</td><td><button class="btn small" data-review-application="${esc(application.id)}">查看材料与回访</button></td></tr>`).join('')}</tbody></table></div>` : empty('暂无匹配的' + title + '申请', selection.role === 'supplier' ? '厂家必须先从前台厂家入口注册，填写营业执照、至少30秒场所视频和5张不同照片，并点击“提交人工审核”。只登录或选择身份不会生成申请。' : '店主需从前台店主入口填写经营资料、上传执照并点击“提交人工审核”。只登录不会生成申请。', `<a class="btn primary" href="${submitUrl}" target="_blank" rel="noopener">打开前台${selection.role === 'supplier' ? '厂家' : '店主'}注册并提交资料入口（新窗口）</a>`)}</section>`,
     bind(root) {
+      root.querySelector('#certificate-review-filters').onsubmit = (event) => {
+        event.preventDefault();
+        const data = formData(event.target);
+        location.hash = certificateReviewPath(selection.role, data);
+      };
       root.querySelectorAll('[data-review-application]').forEach((button) => {
         button.onclick = () =>
           submit(button, async () => {
@@ -243,7 +283,7 @@ function openReview(application) {
   const phone = application.phoneReview || {};
   const root = modal(
     '经营资质材料与电话回访',
-    `<div class="section-line"><h3>${esc(application.company)}</h3>${badge(application.status || 'pending')}</div><p>${esc(application.scope)}</p>${certificateMaterials(application)}${certificationPrecheck(application)}${canReview() ? `${supplier ? `<form id="phone-review-form" class="phone-review-form"><h3>记录实际电话回访</h3>${field('实际拨打的联系手机号', 'phone', phone.phone || '', 'tel', 'required pattern="1[0-9]{10}" maxlength="11"')}<label class="field"><span>核对结果</span><select name="result"><option value="confirmed">已接通，核对一致</option><option value="unreachable">未接通，待再次回访</option><option value="inconsistent">信息不一致</option><option value="rejected">拒绝核对</option></select></label>${field('实际回访记录与核对依据', 'note', '', 'textarea', 'required rows="4"')}<label class="check-field"><input type="checkbox" name="confirmedCall" required><span>我确认已实际拨打电话，并按事实记录结果。</span></label><button class="btn primary full">保存电话回访记录</button></form>` : ''}<div class="review-decision"><div class="notice">${canApprove ? (supplier ? '材料条件与电话核对已满足，可由人工作出最终审核决定。' : '店主营业执照材料条件已满足，由人工作出最终审核决定。') : '材料缺失、视频校验未通过或电话回访未通过时，不能批准。'}AI预审不能自动批准。</div><button class="btn primary" id="approve-certification" ${canApprove ? '' : 'disabled'}>人工审核通过</button><button class="btn" id="reject-certification">退回补充 / 不通过</button></div>` : '<div class="notice">当前账号仅可查看材料，不能记录回访或审批。</div>'}`,
+    `<div class="section-line"><h3>${esc(application.company)}</h3>${badge(application.status || 'pending')}</div><p>${esc(application.scope)}</p>${certificateMaterials(application)}${certificationPrecheck(application)}${canReview() ? `${supplier ? `<form id="phone-review-form" class="phone-review-form"><h3>记录实际电话回访</h3>${field('实际拨打的联系手机号', 'phone', phone.phone || '', 'tel', 'required pattern="1[0-9]{10}" maxlength="11"')}<label class="field"><span>核对结果</span><select name="result" required><option value="" selected disabled>请选择实际回访结果</option><option value="confirmed">已接通，核对一致</option><option value="unreachable">未接通，待再次回访</option><option value="inconsistent">信息不一致</option><option value="rejected">拒绝核对</option></select></label>${field('实际回访记录与核对依据', 'note', '', 'textarea', 'required rows="4"')}<label class="check-field"><input type="checkbox" name="confirmedCall" required><span>我确认已实际拨打电话，并按事实记录结果。</span></label><button class="btn primary full">保存电话回访记录</button></form>` : ''}<div class="review-decision"><div class="notice">${canApprove ? (supplier ? '材料条件与电话核对已满足，可由人工作出最终审核决定。' : '店主营业执照材料条件已满足，由人工作出最终审核决定。') : '材料缺失、视频校验未通过或电话回访未通过时，不能批准。'}AI预审不能自动批准。</div><button class="btn primary" id="approve-certification" ${canApprove ? '' : 'disabled'}>人工审核通过</button><button class="btn" id="reject-certification">退回补充 / 不通过</button></div>` : '<div class="notice">当前账号仅可查看材料，不能记录回访或审批。</div>'}`,
     'certificate-review-modal'
   );
   root.querySelector('[data-refresh-cert]')?.addEventListener('click', (event) =>

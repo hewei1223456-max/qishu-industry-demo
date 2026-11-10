@@ -24,6 +24,15 @@ Page({
     const role = e.currentTarget.dataset.role;
     if (['owner', 'supplier', 'admin'].includes(role)) this.setData({ authRole: role });
   },
+  async afterLogin() {
+    const user = getApp().globalData.user;
+    const adminPending = getApp().globalData.adminAuthorizationRequired || (user && user.adminAuthorizationRequired);
+    if (user && user.role === 'supplier' && !user.verified && !adminPending) {
+      await ui.platform.open('/pages/certify/index?onboarding=1');
+    } else {
+      await ui.platform.tab('/pages/me/index');
+    }
+  },
   async wechat() {
     if (this.data.busy) return;
     this.setData({ busy: true, error: '' });
@@ -32,7 +41,7 @@ Page({
       ui.platform.toast(
         getApp().globalData.adminAuthorizationRequired ? '微信身份已验证，管理员权限待授权' : '微信登录已完成'
       );
-      ui.platform.tab('/pages/me/index');
+      await this.afterLogin();
     } catch (e) {
       this.setData({ error: e.message });
     } finally {
@@ -44,7 +53,7 @@ Page({
     this.setData({ busy: true, error: '' });
     try {
       await getApp().demoLogin(e.currentTarget.dataset.role || this.data.authRole);
-      ui.platform.tab('/pages/me/index');
+      await this.afterLogin();
     } catch (error) {
       this.setData({ error: error.message });
     } finally {
