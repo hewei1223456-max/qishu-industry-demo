@@ -1,0 +1,37 @@
+{
+  "pages": [
+    "pages/info/index",
+    "pages/market/index",
+    "pages/workspace/index",
+    "pages/me/index",
+    "pages/detail/index",
+    "pages/compose/index",
+    "pages/login/index",
+    "pages/certify/index",
+    "pages/tags/index",
+    "pages/knowledge/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "七叔行业平台",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f5f7f5",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#71807c",
+    "selectedColor": "#254f4d",
+    "backgroundColor": "#ffffff",
+    "list": [
+      { "pagePath": "pages/info/index", "text": "资讯" },
+      { "pagePath": "pages/market/index", "text": "找货源" },
+      { "pagePath": "pages/workspace/index", "text": "店铺诊断" },
+      { "pagePath": "pages/me/index", "text": "我的" }
+    ]
+  },
+  "permission": { "scope.record": { "desc": "由你主动录制经营问题语音，上传后用于本次内容发布或诊断" } },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

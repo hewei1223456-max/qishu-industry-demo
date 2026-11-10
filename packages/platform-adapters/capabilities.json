@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "wechat": {
+    "status": "source-implemented",
+    "source": "../../apps/miniprogram/platform/wechat.js",
+    "implemented": [
+      "request",
+      "upload",
+      "storage",
+      "navigation",
+      "font-scale",
+      "choose-image",
+      "choose-video",
+      "choose-file",
+      "record",
+      "clipboard",
+      "preview-image",
+      "wx-login-entry",
+      "audio-playback"
+    ],
+    "configured": {
+      "productionAppId": false,
+      "serverWechatSecret": false
+    },
+    "verified": {
+      "static": true,
+      "devtoolsCompile": false,
+      "iosDevice": false,
+      "androidDevice": false,
+      "harmonyWechatDevice": false
+    }
+  },
+  "web": {
+    "status": "separate-application",
+    "source": "../../apps/web",
+    "sharesBusinessApi": true
+  },
+  "douyin": {
+    "status": "contract-only",
+    "implemented": []
+  },
+  "native": {
+    "status": "contract-only",
+    "implemented": [],
+    "targets": ["ios", "android", "harmony"]
+  }
+}

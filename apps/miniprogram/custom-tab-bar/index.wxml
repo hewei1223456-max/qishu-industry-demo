@@ -1,0 +1,1 @@
+<view class="tabs" style="font-size:{{fontPx}}px"><view wx:for="{{tabs}}" wx:key="page" class="tab {{selected===index?'active':''}}" bindtap="switchTab" data-index="{{index}}"><text class="symbol">{{item.symbol}}</text><text>{{supplier?(index===1?'货源广场':index===2?'找客户':item.name):item.name}}</text></view></view>

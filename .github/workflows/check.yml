@@ -1,0 +1,27 @@
+name: Source and service checks
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r packages/ingestion/requirements.txt
+      - run: node scripts/check.mjs
+      - run: node apps/miniprogram/tools/check.cjs
+      - run: npm test
+      - name: Native page logic against local service
+        run: |
+          node apps/server/src/server.js &
+          service_pid=$!
+          trap 'kill "$service_pid"' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:4188/api/health >/dev/null; then break; fi
+            sleep 1
+          done
+          node apps/miniprogram/tools/smoke.cjs

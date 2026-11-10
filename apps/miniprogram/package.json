@@ -1,0 +1,9 @@
+{
+  "name": "@qishu/miniprogram",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "check": "node tools/check.cjs",
+    "smoke": "node tools/smoke.cjs"
+  }
+}

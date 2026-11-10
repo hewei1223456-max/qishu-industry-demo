@@ -1,0 +1,16 @@
+{
+  "description": "七叔女装行业平台原生微信小程序演示工程",
+  "projectname": "qishu-platform",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "miniprogramRoot": "./",
+  "setting": { "es6": true, "enhance": true, "minified": true, "urlCheck": true, "postcss": true },
+  "libVersion": "latest",
+  "packOptions": {
+    "ignore": [
+      { "type": "file", "value": "README.md" },
+      { "type": "file", "value": "package.json" },
+      { "type": "folder", "value": "tools" }
+    ]
+  }
+}

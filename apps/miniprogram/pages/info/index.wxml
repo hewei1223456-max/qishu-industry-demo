@@ -1,0 +1,16 @@
+<view class="page {{large?'large':''}}" style="font-size:{{fontPx}}px">
+  <view class="head"><view class="brand"><text class="brand-mark">七</text><view><view class="title">资讯</view><view class="subtitle">经营方法与行业发现</view></view></view><button class="small-btn primary" bindtap="publish">发布</button></view>
+  <view class="notice" wx:if="{{!user}}">当前为游客浏览，部分资料须认证后开放。<text bindtap="login"> 登录</text></view>
+  <view class="search"><input placeholder="搜索经营方法、行业信息" value="{{query}}" bindinput="queryInput" bindconfirm="search"/><button class="small-btn secondary" bindtap="search">搜索</button></view>
+  <scroll-view scroll-x class="channels"><view wx:for="{{channels}}" wx:key="*this" class="chip {{category===item?'active':''}}" data-value="{{item}}" bindtap="chooseCategory">{{item}}</view></scroll-view>
+  <view class="error" wx:if="{{error}}">{{error}}<button class="small-btn" bindtap="load">重新加载</button></view>
+  <view class="panel" wx:if="{{closed}}">资讯正在维护，你仍可使用其他入口。</view>
+  <view class="loading" wx:if="{{loading}}">正在整理资讯…</view>
+  <view class="between" wx:if="{{!closed&amp;&amp;!loading}}"><text class="tiny">{{strategy||'内容列表'}}</text><text class="tiny">{{items.length}} 条</text></view>
+  <view class="masonry" wx:if="{{!closed}}"><view class="masonry-col" wx:for="{{columns}}" wx:key="id" wx:for-item="column" wx:for-index="columnIndex"><view class="card" wx:for="{{column.items}}" wx:key="id" bindtap="open" data-id="{{item.id}}">
+    <image wx:if="{{item.imageUrl}}" class="masonry-image" src="{{item.imageUrl}}" mode="widthFix" lazy-load binderror="imageError" data-column="{{columnIndex}}" data-index="{{index}}"/>
+    <view wx:else class="fallback-cover"><text class="badge">{{item.category||'经营分享'}}</text><view class="banner-title">{{item.title}}</view></view>
+    <view class="card-copy"><view class="card-title">{{item.title}}</view><view class="meta">{{item.author||'平台整理'}} · {{item.demoLabel||'已发布'}}</view></view>
+  </view></view></view>
+  <view class="empty" wx:if="{{!loading&amp;&amp;!error&amp;&amp;!closed&amp;&amp;items.length===0}}">暂未找到内容，试试其他关键词。</view>
+</view>

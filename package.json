@@ -1,0 +1,16 @@
+{
+  "name": "qishu-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "七叔女装行业平台模块化演示工程",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env apps/server/src/server.js",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "check:wechat": "node apps/miniprogram/tools/check.cjs"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

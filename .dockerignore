@@ -1,0 +1,13 @@
+.git
+data
+.env
+.env.*
+!**/.env.example
+.ai-process
+work
+node_modules
+**/*.sqlite
+**/*.sqlite-*
+**/secrets.key
+**/*.pem
+*.zip

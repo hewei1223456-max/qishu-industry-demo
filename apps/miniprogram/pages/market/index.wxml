@@ -1,0 +1,17 @@
+<view class="page {{large?'large':''}}" style="font-size:{{fontPx}}px">
+ <view class="head"><view><view class="title">{{supplier?'货源广场':'找货源'}}</view><view class="subtitle">从经营条件，找到适合的货</view></view><button class="small-btn primary" bindtap="publish">{{supplier?'发布货源':'发布'}}</button></view>
+ <swiper wx:if="{{fairs.length}}" class="banner" autoplay="{{autoplay}}" interval="3000" circular="{{true}}" indicator-dots="{{true}}"><swiper-item wx:for="{{fairs}}" wx:key="id" bindtap="openFair" data-id="{{item.id}}"><view class="banner-slide"><image wx:if="{{item.imageUrl}}" class="banner-image" src="{{item.imageUrl}}" mode="aspectFill"/><text class="badge">订货会招募 · 货源内活动</text><view class="banner-title">{{item.title}}</view><view class="banner-sub">{{item.city||item.location}} · {{item.date||'查看活动安排'}}</view></view></swiper-item></swiper>
+ <view class="search"><input placeholder="搜索款式、厂家或拿货条件" value="{{query}}" bindinput="queryInput" bindconfirm="search"/><button class="small-btn secondary" bindtap="search">搜索</button></view>
+ <view class="between"><view class="section-title">六项组合筛选</view><text class="muted" bindtap="reset">重置</text></view>
+ <view class="panel filter-grid">
+  <picker class="filter" range="{{options.style}}" data-key="style" bindchange="chooseFilter"><view class="label">风格</view><view class="filter-value">{{filters.style}}⌄</view></picker>
+  <picker class="filter" range="{{options.origin}}" data-key="origin" bindchange="chooseFilter"><view class="label">产地</view><view class="filter-value">{{filters.origin}}⌄</view></picker>
+  <picker class="filter" range="{{options.category}}" data-key="category" bindchange="chooseFilter"><view class="label">品类</view><view class="filter-value">{{filters.category}}⌄</view></picker>
+  <picker class="filter" range="{{options.price}}" data-key="price" bindchange="chooseFilter"><view class="label">拿货价格带</view><view class="filter-value">{{filters.price}}⌄</view></picker>
+  <picker class="filter" range="{{options.moq}}" data-key="moq" bindchange="chooseFilter"><view class="label">起批量</view><view class="filter-value">{{filters.moq}}⌄</view></picker>
+  <picker class="filter" range="{{options.status}}" data-key="status" bindchange="chooseFilter"><view class="label">供货状态</view><view class="filter-value">{{filters.status}}⌄</view></picker>
+ </view>
+ <view class="error" wx:if="{{error}}">{{error}}<button bindtap="load" class="small-btn">重新加载</button></view><view class="panel" wx:if="{{closed}}">货源正在维护，其他入口仍可使用。</view><view class="loading" wx:if="{{loading}}">正在加载货源…</view>
+ <view class="masonry" wx:if="{{!closed}}"><view class="masonry-col" wx:for="{{columns}}" wx:key="id" wx:for-item="column" wx:for-index="columnIndex"><view class="card" wx:for="{{column.items}}" wx:key="id" bindtap="open" data-id="{{item.id}}"><image wx:if="{{item.imageUrl}}" class="masonry-image" src="{{item.imageUrl}}" mode="widthFix" lazy-load binderror="imageError" data-column="{{columnIndex}}" data-index="{{index}}"/><view wx:else class="fallback-cover"><text>{{item.category}}</text><text>{{item.style}}</text></view><view class="card-copy"><view class="card-title">{{item.title}}</view><view class="price">{{item.priceText}}</view><view class="meta">{{item.origin}} · {{item.moq||'—'}}件起 · {{item.status}}</view><view class="meta">{{item.companyName}}</view><text class="tiny">{{item.demoLabel}}</text></view></view></view></view>
+ <view class="empty" wx:if="{{!loading&amp;&amp;!error&amp;&amp;!closed&amp;&amp;!items.length}}">没有找到匹配货源，试试调整筛选。</view>
+</view>

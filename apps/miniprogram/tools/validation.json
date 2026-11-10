@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-11-10T11:26:24.234Z",
+  "source": {
+    "check": "native-source-static",
+    "passed": true,
+    "scripts": 16,
+    "jsons": 15,
+    "templates": 11,
+    "handlers": 138,
+    "pages": 10,
+    "errors": [],
+    "notVerified": [
+      "WeChat DevTools compiler",
+      "WXML runtime rendering",
+      "real device",
+      "real WeChat login",
+      "production domain"
+    ]
+  },
+  "smoke": {
+    "check": "native-page-api-smoke",
+    "passed": true,
+    "checks": [
+      "游客启动与服务端 bootstrap",
+      "游客货源限权、双列与默认推荐",
+      "列表进入详情保留筛选",
+      "缺凭证真实微信登录明确失败",
+      "演示登录与 Bearer 会话",
+      "经营资料保存回读且不提权",
+      "资讯推荐读取，不虚报列表曝光",
+      "主动组合筛选走严格货源查询",
+      "经营标签最少四个校验",
+      "创作草稿实际写入并归档",
+      "AI请求失败后资讯保持可读",
+      "厂家独立客户视角与服务端额度",
+      "三种联系渠道解析及复制/二维码预览桩",
+      "公开联络显式同意保存回读及实际联系渠道",
+      "系统大字号读取",
+      "原生返回与无历史 Tab 兜底"
+    ],
+    "limitations": [
+      "wx APIs are mocked; no rendering",
+      "No developer-tool compile or real device",
+      "No real WeChat identity",
+      "No upload/camera/microphone device test"
+    ],
+    "server": "current-source isolated HTTP + SQLite fixture",
+    "credentials": "none"
+  },
+  "asset": {
+    "status": 200,
+    "type": "image/jpeg"
+  },
+  "devtools": {
+    "commandFound": false,
+    "checkedPaths": [
+      "C:/Program Files (x86)/Tencent/微信web开发者工具/cli.bat",
+      "C:/Program Files/Tencent/微信web开发者工具/cli.bat",
+      "D:/微信web开发者工具/cli.bat"
+    ],
+    "compile": false,
+    "devices": false
+  },
+  "wxmlStructure": {
+    "passed": true,
+    "templates": 11,
+    "nativeBooleanAttributesNormalized": ["wx:else", "lazy-load", "scroll-x"],
+    "notWeChatCompile": true
+  }
+}
