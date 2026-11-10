@@ -1,7 +1,8 @@
 import { state, refresh, saveFont, isSupplier, labels } from './core/state.js';
+import { post } from './core/api.js';
 import { route, beginRoute, back } from './core/navigation.js';
 import { icon } from './components/icons.js';
-import { esc, avatar, errorBlock, empty, closeModal } from './components/ui.js';
+import { esc, avatar, errorBlock, empty, closeModal, toast } from './components/ui.js';
 import { visibleAdminMenus } from './core/menus.js';
 // Page modules load independently so a failed optional module cannot stop the shell.
 const lazyPage = (path) =>
@@ -25,6 +26,32 @@ import { renderPlacements } from './components/ads.js';
 const app = document.querySelector('#app');
 let cleanup,
   renderVersion = 0;
+const demoViews = {
+  owner: { role: 'owner', path: '/info' },
+  supplier: { role: 'supplier', path: '/info' },
+  manufacturer: { role: 'supplier', path: '/manufacturer' },
+  admin: { role: 'admin', path: '/admin' },
+  unverified: { role: 'owner', userId: 'owner-guest', path: '/info' },
+  guest: { path: '/info' }
+};
+async function switchDemoView(value) {
+  if (state.mode !== 'development-demo') throw new Error('仅开发演示环境可切换视角。');
+  const view = demoViews[value];
+  if (!view) throw new Error('请选择有效的演示视角。');
+  if (view.role) {
+    await post('/auth/demo', { role: view.role, ...(view.userId ? { userId: view.userId } : {}) });
+  } else {
+    await post('/auth/logout', {});
+  }
+  await refresh();
+  if (location.hash === '#' + view.path) await render(false);
+  else location.hash = view.path;
+}
+function demoViewControl() {
+  return state.mode === 'development-demo'
+    ? `<select class="demo-view-switch" id="demo-view-switch" aria-label="切换演示视角"><option value="" selected disabled>切换演示视角</option><option value="owner">店主前台</option><option value="supplier">厂家前台</option><option value="manufacturer">厂家经营后台</option><option value="admin">平台运营后台</option><option value="unverified">未认证店主</option><option value="guest">游客</option></select>`
+    : '';
+}
 const navItems = () =>
   isSupplier()
     ? [
@@ -83,7 +110,7 @@ function shell(ctx) {
       )
       .join('');
   const u = state.user;
-  return `<div class="app-shell ${mode}"><div class="drawer-scrim" id="drawer-scrim"></div><aside class="sidebar">${brand()}<div class="side-intro">${adminMode ? '平台运营管理' : manufacturerMode ? '厂家经营管理' : '经验 · 货源 · 经营判断'}</div><nav class="side-nav">${links}</nav>${!adminMode && !manufacturerMode ? `<div class="nav-section-label">我的工作空间</div><nav class="side-nav workspace-nav"><a class="nav-item ${ctx.path === '/creator' ? 'active' : ''}" href="#/creator">${icon('edit')}<span>创作中心</span></a><a class="nav-item" href="#/leads">${icon('message')}<span>联系与回访</span></a>${isSupplier() ? `<a class="nav-item" href="#/manufacturer">${icon('chart')}<span>厂家经营后台</span></a>` : ''}${u?.role === 'admin' ? `<a class="nav-item" href="#/admin">${icon('settings')}<span>平台运营后台</span></a>` : ''}</nav>` : ''}<footer class="sidebar-footer"><a href="#${adminMode || manufacturerMode ? '/info' : '/login'}">${icon(adminMode || manufacturerMode ? 'back' : 'shield')}${adminMode || manufacturerMode ? '回到用户端' : '开发体验入口'}</a><small>开发预览 · 独立测试数据</small></footer></aside><div class="main-shell"><header class="topbar"><button class="icon-button mobile-menu" id="mobile-menu" aria-label="打开导航">${icon('menu')}</button><a class="mobile-brand" href="#/info"><span class="brand-mark">七</span><strong>${adminMode ? '运营后台' : '七叔'}</strong></a><form id="global-search" class="global-search">${icon('search')}<input name="query" placeholder="${adminMode ? '浏览当前管理模块' : isSupplier() ? '搜索货源、资讯或店主需求' : '搜索货源、经验和经营方法'}" aria-label="全站搜索" value="${esc(ctx.query.get('query') || ctx.query.get('q') || '')}"></form><div class="topbar-actions"><span class="preview-label">开发预览</span>${u ? `<a class="account-link" href="#/my">${avatar(u.name)}<span>${esc(labels[u.role] || '我的')}</span></a>` : '<a class="text-link login-link" href="#/login">登录演示</a>'}${!adminMode ? `<a class="btn primary top-publish" href="#/publish?kind=${isSupplier() ? 'product' : 'content'}">${icon('plus')}<span>发布</span></a>` : ''}</div></header><main class="page-content" id="page-content"><div class="navigation-line"><button class="text-button" data-back>${icon('back')}返回上一步</button><a href="#${adminMode ? '/admin' : '/info'}">${adminMode ? '运营总览' : '回到首页'}</a><span class="navigation-context">${adminMode ? (Array.isArray(u?.permissions) && !u.permissions.includes('*') ? '按账号授权管理' : '平台最高管理权限') : manufacturerMode ? '厂家经营工作空间' : '开发演示 · 样例资料'}</span></div><div id="page-view"><div class="loading-state"><span></span>正在载入这个模块…</div></div></main></div>${
+  return `<div class="app-shell ${mode}"><div class="drawer-scrim" id="drawer-scrim"></div><aside class="sidebar">${brand()}<div class="side-intro">${adminMode ? '平台运营管理' : manufacturerMode ? '厂家经营管理' : '经验 · 货源 · 经营判断'}</div><nav class="side-nav">${links}</nav>${!adminMode && !manufacturerMode ? `<div class="nav-section-label">我的工作空间</div><nav class="side-nav workspace-nav"><a class="nav-item ${ctx.path === '/creator' ? 'active' : ''}" href="#/creator">${icon('edit')}<span>创作中心</span></a><a class="nav-item" href="#/leads">${icon('message')}<span>联系与回访</span></a>${isSupplier() ? `<a class="nav-item" href="#/manufacturer">${icon('chart')}<span>厂家经营后台</span></a>` : ''}${u?.role === 'admin' ? `<a class="nav-item" href="#/admin">${icon('settings')}<span>平台运营后台</span></a>` : ''}</nav>` : ''}<footer class="sidebar-footer"><a href="#${adminMode || manufacturerMode ? '/info' : '/login'}">${icon(adminMode || manufacturerMode ? 'back' : 'shield')}${adminMode || manufacturerMode ? '回到用户端' : '开发体验入口'}</a><small>开发预览 · 独立测试数据</small></footer></aside><div class="main-shell"><header class="topbar"><button class="icon-button mobile-menu" id="mobile-menu" aria-label="打开导航">${icon('menu')}</button><a class="mobile-brand" href="#/info"><span class="brand-mark">七</span><strong>${adminMode ? '运营后台' : '七叔'}</strong></a><form id="global-search" class="global-search">${icon('search')}<input name="query" placeholder="${adminMode ? '浏览当前管理模块' : isSupplier() ? '搜索货源、资讯或店主需求' : '搜索货源、经验和经营方法'}" aria-label="全站搜索" value="${esc(ctx.query.get('query') || ctx.query.get('q') || '')}"></form><div class="topbar-actions${state.mode === 'development-demo' ? ' has-demo-switch' : ''}">${demoViewControl()}<span class="preview-label">开发预览</span>${u ? `<a class="account-link" href="#/my">${avatar(u.name)}<span>${esc(labels[u.role] || '我的')}</span></a>` : '<a class="text-link login-link" href="#/login">登录演示</a>'}${!adminMode ? `<a class="btn primary top-publish" href="#/publish?kind=${isSupplier() ? 'product' : 'content'}">${icon('plus')}<span>发布</span></a>` : ''}</div></header><main class="page-content" id="page-content"><div class="navigation-line"><button class="text-button" data-back>${icon('back')}返回上一步</button><a href="#${adminMode ? '/admin' : '/info'}">${adminMode ? '运营总览' : '回到首页'}</a><span class="navigation-context">${adminMode ? (Array.isArray(u?.permissions) && !u.permissions.includes('*') ? '按账号授权管理' : '平台最高管理权限') : manufacturerMode ? '厂家经营工作空间' : '开发演示 · 样例资料'}</span></div><div id="page-view"><div class="loading-state"><span></span>正在载入这个模块…</div></div></main></div>${
     !adminMode && !manufacturerMode
       ? `<nav class="bottom-nav" aria-label="主要导航">${navItems()
           .map(
@@ -236,6 +263,22 @@ async function render(restore = true) {
   const ctx = route(),
     restoreScroll = restore ? beginRoute() : () => {};
   app.innerHTML = shell(ctx);
+  const demoSwitch = app.querySelector('#demo-view-switch');
+  if (demoSwitch) {
+    demoSwitch.onchange = async () => {
+      const value = demoSwitch.value;
+      demoSwitch.value = '';
+      demoSwitch.disabled = true;
+      try {
+        await switchDemoView(value);
+      } catch (error) {
+        toast(error.message);
+      } finally {
+        demoSwitch.value = '';
+        demoSwitch.disabled = false;
+      }
+    };
+  }
   app
     .querySelector('#mobile-menu')
     ?.addEventListener('click', () => document.querySelector('.app-shell').classList.toggle('drawer-open'));

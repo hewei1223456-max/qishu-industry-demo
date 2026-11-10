@@ -18,45 +18,41 @@ import {
   certificationPrecheck
 } from '../components/ui.js';
 
-export async function login() {
+export async function login(ctx = {}) {
+  const entry = ctx.query?.get('entry') || '';
+  const front = [
+    ['owner', 'user', '店主前台', '看资讯、找货源、诊断门店', '', '/info'],
+    ['supplier', 'box', '厂家前台', '看资讯、货源广场、找客户', '', '/info'],
+    ['owner', 'shield', '未认证店主', '查看审核前后的信息权限', 'owner-guest', '/info'],
+    ['guest', 'user', '游客浏览', '退出演示账号，查看公开信息', '', '/info']
+  ];
+  const backstage = [
+    ['supplier', 'chart', '厂家经营后台', '管理货源、订货会、内容与回访', '', '/manufacturer'],
+    ['admin', 'settings', '平台运营后台', '审核、内容、权益、模型与配置', '', '/admin']
+  ];
+  const views = entry === 'back' ? backstage : entry === 'front' ? front : [...front, ...backstage];
+  const demo = state.mode === 'development-demo';
+  const title = entry === 'back' ? '后台演示入口' : entry === 'front' ? '前台演示入口' : '进入开发演示';
   return {
-    html: `<div class="login-layout"><div class="login-story"><span class="brand-mark">七</span><span class="eyebrow">七叔女装行业平台</span><h1>把经验、货源<br>和合适的人连接起来。</h1><p>先了解你的身份，再进入适合的工作空间。</p><div class="login-photo">${img('/assets/boutique-interior.jpg', '女装门店参考照片')}</div></div><section class="panel login-panel"><h2>进入开发演示</h2><p class="muted">这些账号只用于当前测试数据库，不代表真实微信登录或经营资质。</p><div class="login-roles">${[
-      ['owner', 'shield', '未认证店主体验', '提交执照、查看审核前后的权限', 'owner-guest'],
-      ['owner', 'user', '店主体验', '看资讯、找货源、诊断门店'],
-      ['supplier', 'box', '厂家体验', '发布货源、找客户、做回访'],
-      ['admin', 'shield', '平台运营体验', '管理内容、审核、配置与权益']
-    ]
-      .map(
-        ([role, i, title, sub, userId]) =>
-          `<button class="login-role" data-login="${role}" data-user-id="${userId || ''}">${icon(i)}<span><strong>${title}</strong><small>${sub}</small></span>${icon('arrow')}</button>`
-      )
-      .join(
-        ''
-      )}</div><div class="login-divider"><span>正式接入状态</span></div><button class="btn full" id="wechat-login">微信正式登录 · 查看配置状态</button><p class="tiny muted">正式上线需要企业小程序 AppID、微信授权和服务端凭证；开发账号不会绕过生产认证。</p></section></div>`,
+    html: `<div class="login-layout"><div class="login-story"><span class="brand-mark">七</span><span class="eyebrow">七叔女装行业平台</span><h1>把经验、货源<br>和合适的人连接起来。</h1><p>先了解你的身份，再进入适合的工作空间。</p><div class="login-photo">${img('/assets/boutique-interior.jpg', '女装门店参考照片')}</div></div><section class="panel login-panel"><h2>${title}</h2><p class="muted">${demo ? '这些账号仅用于开发演示，不代表真实微信登录或经营资质。' : '当前为正式环境，不开放演示角色切换。'}</p><div class="login-roles">${demo ? views.map(([role, i, label, sub, userId, path]) => `<button class="login-role" data-login="${role}" data-user-id="${userId || ''}" data-route="${path}">${icon(i)}<span><strong>${label}</strong><small>${sub}</small></span>${icon('arrow')}</button>`).join('') : ''}</div>${demo ? '<div class="creator-shortcuts"><a class="btn small" href="#/login?entry=front">前台入口</a><a class="btn small" href="#/login?entry=back">后台入口</a></div>' : ''}<div class="login-divider"><span>正式接入状态</span></div><button class="btn full" id="wechat-login">微信正式登录 · 查看配置状态</button><p class="tiny muted">正式上线需要企业小程序 AppID、微信授权和服务端凭证；开发账号不会绕过生产认证。</p></section></div>`,
     bind(root) {
-      root.querySelectorAll('[data-login]').forEach(
-        (b) =>
-          (b.onclick = () =>
-            submit(b, async () => {
-              await post('/auth/demo', {
-                role: b.dataset.login,
-                ...(b.dataset.userId ? { userId: b.dataset.userId } : {})
-              });
-              await refresh();
-              location.hash =
-                b.dataset.login === 'admin'
-                  ? '/admin'
-                  : state.user?.verified && (state.user.tags || []).length < 4
-                    ? '/tags'
-                    : '/info';
-              window.dispatchEvent(new Event('qishu:refresh'));
-            }))
-      );
-      root.querySelector('#wechat-login').onclick = (e) =>
-        submit(e.currentTarget, async () => {
-          const result = await post('/auth/wechat', {});
-          toast(result.message || '请在微信小程序中发起正式授权。');
+      root.querySelectorAll('[data-login]').forEach((button) => {
+        button.onclick = () => submit(button, async () => {
+          if (state.mode !== 'development-demo') throw new Error('正式环境不开放演示登录。');
+          if (button.dataset.login === 'guest') await post('/auth/logout', {});
+          else await post('/auth/demo', {
+            role: button.dataset.login,
+            ...(button.dataset.userId ? { userId: button.dataset.userId } : {})
+          });
+          await refresh();
+          location.hash = button.dataset.route;
+          window.dispatchEvent(new Event('qishu:refresh'));
         });
+      });
+      root.querySelector('#wechat-login').onclick = (event) => submit(event.currentTarget, async () => {
+        const result = await post('/auth/wechat', {});
+        toast(result.message || '请在微信小程序中发起正式授权。');
+      });
     }
   };
 }

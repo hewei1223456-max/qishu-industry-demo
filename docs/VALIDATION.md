@@ -26,7 +26,7 @@
 
 最终本机回归：52份脚本语法检查通过，43项自动测试全部通过，0失败。覆盖会话、正式环境禁演示、岗位授权及实时撤权、主体隔离、联系方式授权与撤回、额度原子去重、素材发布及私有原件、生产数据初始化、微信HTTP协议、资质OCR工作流、AI协议和降级、双塔训练持久化、资料拆解及压缩安全。
 
-原生源码检查覆盖10页、16份JS、15份JSON、11份WXML及138处事件绑定。16项页面逻辑与真实本地HTTP服务联调通过，覆盖游客限权、两角色、资料、联络、推荐/筛选、创作、故障、大字及返回；微信原生授权、复制、预览等设备API使用桩，不当作真机验证。命令为`node scripts/check.mjs`、`node --test tests/*.test.mjs`、`node apps/miniprogram/tools/check.cjs`与`node apps/miniprogram/tools/smoke.cjs`。
+原生源码检查覆盖10页、16份JS、15份JSON、11份WXML及139处事件绑定。16项页面逻辑与真实本地HTTP服务联调通过，覆盖游客限权、两角色、资料、联络、推荐/筛选、创作、故障、大字及返回；微信原生授权、复制、预览等设备API使用桩，不当作真机验证。命令为`node scripts/check.mjs`、`node --test tests/*.test.mjs`、`node apps/miniprogram/tools/check.cjs`与`node apps/miniprogram/tools/smoke.cjs`。
 
 实际浏览器检查：390×844手机、834×1112平板、1440×1000电脑；大字号下无横向溢出。验证了货源筛选进入详情后返回仍为原产地结果、浏览器返回先关闭编辑弹层、后台上传拆卡修改后真实进入前台，以及关闭货源模块后资讯与导航继续可用。关闭开关测试后已恢复。
 
@@ -59,3 +59,5 @@
 ## 界面留存
 
 [手机双列资讯](screenshots/mobile-info.png) · [平台运营后台](screenshots/admin-overview.png) · [认证预审状态](screenshots/certification.png)
+
+追加演示验收：前台入口#/login?entry=front与后台入口#/login?entry=back已分开，顶部六场景切换实测进入正确角色与页面，390px下切换控件高44px且无横向溢出。店主、厂家账号personalized=true，推荐模块启用；正式模式不显示体验提权入口。

@@ -4916,6 +4916,37 @@ img {
 .table-scroll .cert-precheck summary {
   font-size: 0.72rem;
 }
+.topbar .global-search {
+  min-width: 0;
+}
+.topbar-actions.has-demo-switch {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
+  gap: 10px;
+}
+.demo-view-switch {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 9px 8px;
+  border: 1px solid #c6d4c2;
+  border-radius: 6px;
+  background: #edf3e7;
+  color: var(--brand);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  cursor: pointer;
+}
+@media (max-width: 640px) {
+  .topbar-actions.has-demo-switch {
+    gap: 8px;
+  }
+  .demo-view-switch {
+    font-size: 0.74rem;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;
