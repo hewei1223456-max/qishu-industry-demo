@@ -20,7 +20,10 @@ import {
   demoLogin,
   logout,
   safeUser,
-  hasAdminPermission
+  hasAdminPermission,
+  requestScope,
+  persistentUser,
+  projectIdentity
 } from './auth.js';
 import {
   publicItems,
@@ -45,6 +48,13 @@ import { createMediaPreviews } from './previews.js';
 import { startCertificatePrecheck, certificationView } from './certification.js';
 import { sniffMime } from './file-types.js';
 import { contactOf, saveContact } from './contact.js';
+import {
+  migrateSupplierCertificationPolicy,
+  validateCertificateMaterials,
+  assertCertificateApprovable,
+  recordPhoneReview
+} from './certificate-policy.js';
+import { uploadCertificateVideo, CERT_VIDEO_LIMIT } from './certificate-upload.js';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const MIME = {
@@ -65,7 +75,10 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8'
 };
 function json(res, status, data) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
   res.end(JSON.stringify(data));
 }
 async function bufferBody(req, limit = 2 * 1024 * 1024) {
@@ -99,7 +112,8 @@ function checkOwned(user, item) {
 function canReviewFile(user, file) {
   return (
     hasAdminPermission(user, 'files:read') ||
-    (file.purpose === 'license' && hasAdminPermission(user, 'certifications:read')) ||
+    (['license', 'certification_photo', 'certification_video'].includes(file.purpose) &&
+      hasAdminPermission(user, 'certifications:read')) ||
     (file.purpose === 'content' &&
       ['content', 'products', 'fairs'].some(
         (kind) => hasAdminPermission(user, kind + ':read') || hasAdminPermission(user, kind + ':write')
@@ -131,10 +145,82 @@ export function createApp(options = {}) {
     db.close();
     throw error;
   }
-  const secrets = createSecretStore(join(dataDir, 'secrets.key'), { memory: options.dbPath === ':memory:' });
+  const secrets = createSecretStore(join(dataDir, 'secrets.key'), {
+    memory: options.dbPath === ':memory:'
+  });
   const previews = createMediaPreviews(db, secrets);
-  const ai = createAiService({ db, secrets, uploadDir, getConfig: () => readConfig(db), ...options.ai });
+  const ai = createAiService({
+    db,
+    secrets,
+    uploadDir,
+    getConfig: () => readConfig(db),
+    ...options.ai
+  });
   const wechat = createWechatAuth({ db, ...options.wechat });
+  migrateSupplierCertificationPolicy(db);
+  function presentCertificate(req, user, item) {
+    const scope = requestScope(req),
+      value = certificationView(db, item, { scope });
+    const attach = (file) => {
+      if (!file || !user?.authSessionHash) return file;
+      const ticket = secrets.encrypt(
+        JSON.stringify({
+          kind: 'certification-material',
+          fileId: file.id,
+          viewerId: user.id,
+          sessionHash: user.authSessionHash,
+          scope,
+          expiresAt: Date.now() + 10 * 60 * 1000
+        })
+      );
+      return {
+        ...file,
+        url: `/api/files/${file.id}?scope=${scope}&certificateTicket=${encodeURIComponent(ticket)}`
+      };
+    };
+    return {
+      ...value,
+      materials: {
+        license: attach(value.materials?.license),
+        venueVideo: attach(value.materials?.venueVideo),
+        venuePhotos: (value.materials?.venuePhotos || []).map(attach)
+      }
+    };
+  }
+  function certificateTicketPermits(req, file, url) {
+    const token = url.searchParams.get('certificateTicket');
+    if (
+      !token ||
+      token.length > 2500 ||
+      !['license', 'certification_photo', 'certification_video'].includes(file.purpose)
+    )
+      return false;
+    try {
+      const t = JSON.parse(secrets.decrypt(token));
+      if (
+        t.kind !== 'certification-material' ||
+        t.fileId !== file.id ||
+        t.scope !== requestScope(req) ||
+        t.expiresAt < Date.now() ||
+        t.expiresAt > Date.now() + 605000
+      )
+        return false;
+      const current = userForRequest(db, req);
+      if (!current || current.authSessionHash !== t.sessionHash || current.id !== t.viewerId) return false;
+      const s = db.raw
+        .prepare('SELECT user_id,requested_role FROM sessions WHERE hash=? AND scope=? AND expires>?')
+        .get(t.sessionHash, t.scope, Date.now());
+      if (!s || s.user_id !== t.viewerId) return false;
+      const viewer = projectIdentity(db, db.get('users', s.user_id), t.scope, s.requested_role);
+      return (
+        viewer &&
+        (file.ownerId === viewer.id ||
+          (t.scope === 'back' && hasAdminPermission(viewer, 'certifications:read')))
+      );
+    } catch {
+      return false;
+    }
+  }
   if (
     process.env.BOOTSTRAP_ADMIN_PHONE &&
     db.list('admins').length === 0 &&
@@ -165,6 +251,12 @@ export function createApp(options = {}) {
       id = parts[3],
       method = req.method;
     requireAdmin(user, `${resource}:${method === 'GET' ? 'read' : 'write'}`);
+    if (resource === 'certifications' && id && parts[4] === 'phone-review' && method === 'POST') {
+      const old = db.get('certifications', id);
+      if (!old) throw new AppError(404, 'NOT_FOUND', '认证申请不存在。');
+      const item = recordPhoneReview(db, user, old, await bodyJson(req));
+      return json(res, 200, { item: presentCertificate(req, user, item) });
+    }
     if (resource === 'admins' && method !== 'GET') requireAdmin(user, '*');
     if (resource === 'config') {
       if (method === 'GET') return json(res, 200, { config: readConfig(db) });
@@ -228,7 +320,7 @@ export function createApp(options = {}) {
             resource === 'providers'
               ? cleanProvider(item)
               : resource === 'certifications'
-                ? certificationView(db, item)
+                ? presentCertificate(req, user, item)
                 : resource === 'users'
                   ? safeUser(item)
                   : resource === 'buyers'
@@ -240,7 +332,7 @@ export function createApp(options = {}) {
       if (resource === 'products') items = items.map((x) => creatorShape(x, 'product'));
       if (resource === 'users') items = items.map(safeUser);
       if (resource === 'buyers') items = items.map(({ publicContact, phone, wechat, ...safe }) => safe);
-      if (resource === 'certifications') items = items.map((x) => certificationView(db, x));
+      if (resource === 'certifications') items = items.map((x) => presentCertificate(req, user, x));
       return json(res, 200, { items });
     }
     if (method === 'DELETE') {
@@ -259,6 +351,11 @@ export function createApp(options = {}) {
           deletedAt: now()
         });
       if (['content', 'products', 'fairs'].includes(resource)) refreshPublishedMedia(db, old);
+      if (resource === 'certifications') {
+        const account = db.get('users', old.ownerId);
+        if (account && (!account.currentCertificationId || account.currentCertificationId === old.id))
+          db.save('users', { ...account, verified: false, certificationStatus: 'deleted' });
+      }
       audit(db, user, 'delete-' + resource, id);
       return json(res, 200, { ok: true });
     }
@@ -268,6 +365,11 @@ export function createApp(options = {}) {
     const old = id ? db.get(resource, id) : null;
     if (id && !old) throw new AppError(404, 'NOT_FOUND', '记录不存在。');
     let item = { ...old, ...b, id: id || b.id || uid(resource) };
+    if (
+      resource === 'users' &&
+      ['verified', 'certificationStatus', 'certificationPolicyVersion'].some((k) => Object.hasOwn(b, k))
+    )
+      throw new AppError(400, 'USE_CERTIFICATION_REVIEW', '经营认证只能通过完整材料审核流程开通。');
     if (resource === 'admins') requireAdmin(user, '*');
     if (
       resource === 'users' &&
@@ -350,14 +452,51 @@ export function createApp(options = {}) {
     }
     if (['content', 'fairs'].includes(resource) && b.status) item.published = b.status === 'published';
     if (resource === 'certifications') {
-      if (['approved', 'rejected', 'needs_more'].includes(item.status)) {
+      if (b.phoneReview !== undefined)
+        throw new AppError(
+          400,
+          'USE_PHONE_REVIEW_ACTION',
+          '请通过人工回访专用入口记录，不能直接填造回访结果。'
+        );
+      if (
+        old &&
+        ['ownerId', 'companyId', 'applicantRole'].some((k) => Object.hasOwn(b, k) && b[k] !== old[k])
+      )
+        throw new AppError(
+          400,
+          'CERTIFICATE_IDENTITY_IMMUTABLE',
+          '认证账号与主体归属不能通过编辑申请来变更。'
+        );
+      const changedMaterials =
+        old &&
+        ['licenseFileId', 'venueVideoFileId', 'venuePhotoFileIds', 'company', 'scope'].some(
+          (k) => Object.hasOwn(b, k) && JSON.stringify(b[k]) !== JSON.stringify(old[k])
+        );
+      if (changedMaterials) {
+        if (b.status === 'approved')
+          throw new AppError(
+            409,
+            'RECERTIFICATION_REQUIRED',
+            '材料或填报主体变更后须重新核验与回访，不能同一操作直接通过。'
+          );
+        item = {
+          ...item,
+          status: 'pending',
+          phoneReview: { status: 'pending', result: null },
+          videoVerification: { status: 'missing', durationSeconds: null, source: 'ffprobe' },
+          materialsVerification: { status: 'pending' }
+        };
+      }
+      if (item.status === 'approved') item = await assertCertificateApprovable(db, item, uploadDir);
+      if (item.status) {
         item.reviewedBy = user.id;
         item.reviewedAt = now();
         const account = db.get('users', item.ownerId);
-        if (account)
+        if (account && (!account.currentCertificationId || account.currentCertificationId === item.id))
           db.save('users', {
             ...account,
             verified: item.status === 'approved',
+            certificationPolicyVersion: item.certificationPolicyVersion,
             certificationStatus: item.status,
             companyName: item.company || account.companyName
           });
@@ -428,7 +567,7 @@ export function createApp(options = {}) {
       res.setHeader('Vary', 'Origin');
     }
     if (method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Qishu-Scope');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
       res.writeHead(204);
       res.end();
@@ -436,6 +575,26 @@ export function createApp(options = {}) {
     }
     if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url);
     const user = userForRequest(db, req);
+    const authScope = requestScope(req);
+    if (
+      (parts[1] === 'admin' ||
+        (url.pathname.startsWith('/api/ingestion/') && !url.pathname.startsWith('/api/ingestion/public/'))) &&
+      authScope !== 'back'
+    )
+      throw new AppError(401, 'BACK_SCOPE_REQUIRED', '此接口只接受独立后台会话，前台登录不能跨入后台。');
+    if (
+      authScope === 'back' &&
+      user &&
+      (user.adminAuthorizationRequired || !['supplier', 'admin'].includes(user.role)) &&
+      !['/api/auth/me', '/api/auth/phone', '/api/auth/logout', '/api/bootstrap', '/api/profile'].includes(
+        url.pathname
+      )
+    )
+      throw new AppError(
+        403,
+        'BACK_AUTHORIZATION_REQUIRED',
+        '后台只开放厂家与已授权平台管理员；请先完成手机号核验与平台授权。'
+      );
     const config = readConfig(db);
     if (url.pathname.startsWith('/api/ingestion')) {
       await ingestionReady;
@@ -458,24 +617,25 @@ export function createApp(options = {}) {
     if (url.pathname === '/api/auth/phone' && method === 'POST')
       return json(res, 200, await wechat.phone(req, res, await bodyJson(req), user));
     if (url.pathname === '/api/auth/me')
-      return json(res, 200, { user: safeUser(user), mode: demoEnabled ? 'development-demo' : 'production' });
+      return json(res, 200, {
+        user: safeUser(user),
+        mode: demoEnabled ? 'development-demo' : 'production'
+      });
     if (url.pathname === '/api/auth/logout' && method === 'POST') return json(res, 200, logout(db, req, res));
     if (url.pathname === '/api/bootstrap')
       return json(res, 200, {
         user: safeUser(user),
         config: hasAdminPermission(user, 'config:read') ? config : publicConfig(config),
         dictionaries: dictionaries(config),
-        providers: db
-          .list('providers')
-          .map((p) => ({
-            id: p.id,
-            name: p.name,
-            adapter: p.adapter,
-            capabilities: p.capabilities,
-            enabled: p.enabled,
-            configured: !!p.secret,
-            connectionStatus: p.enabled ? (p.secret ? 'configured-not-verified' : 'unconfigured') : 'disabled'
-          })),
+        providers: db.list('providers').map((p) => ({
+          id: p.id,
+          name: p.name,
+          adapter: p.adapter,
+          capabilities: p.capabilities,
+          enabled: p.enabled,
+          configured: !!p.secret,
+          connectionStatus: p.enabled ? (p.secret ? 'configured-not-verified' : 'unconfigured') : 'disabled'
+        })),
         modules: config.features,
         mode: demoEnabled ? 'development-demo' : 'production',
         notice: demoEnabled
@@ -592,21 +752,29 @@ export function createApp(options = {}) {
       const tags = [...new Set((b.tags || []).map((x) => String(x).slice(0, 60)))];
       if (tags.length < 4 || tags.length > 10)
         throw new AppError(400, 'TAG_LIMIT', '请选择至少4个、最多10个标签。');
-      const updated = db.save('users', { ...user, tags, onboarded: true });
-      return json(res, 200, { user: safeUser(updated) });
+      const updated = db.save('users', { ...persistentUser(db, user), tags, onboarded: true });
+      return json(res, 200, {
+        user: safeUser(
+          projectIdentity(db, updated, user.authScope || 'front', user.authRequestedRole || user.role)
+        )
+      });
     }
     if (url.pathname === '/api/profile/preferences' && ['PATCH', 'POST'].includes(method)) {
       requireUser(user);
       const b = await bodyJson(req);
       const updated = db.save('users', {
-        ...user,
+        ...persistentUser(db, user),
         personalized: b.personalized !== undefined ? b.personalized === true : user.personalized,
         knowledgeForRecommendations:
           b.knowledgeForRecommendations !== undefined
             ? b.knowledgeForRecommendations === true
             : user.knowledgeForRecommendations
       });
-      return json(res, 200, { user: safeUser(updated) });
+      return json(res, 200, {
+        user: safeUser(
+          projectIdentity(db, updated, user.authScope || 'front', user.authRequestedRole || user.role)
+        )
+      });
     }
     if (parts[1] === 'knowledge') {
       requireUser(user);
@@ -668,9 +836,13 @@ export function createApp(options = {}) {
     if (parts[1] === 'files' && parts[2] && method === 'GET') {
       const file = db.get('files', parts[2]);
       if (!file) throw new AppError(404, 'NOT_FOUND', '文件不存在。');
-      if (!file.public && !previews.permits(file, url.searchParams.get('ticket'))) {
+      if (
+        !file.public &&
+        !previews.permits(file, url.searchParams.get('ticket')) &&
+        !certificateTicketPermits(req, file, url)
+      ) {
         requireUser(user);
-        if (file.ownerId !== user.id && !canReviewFile(user, file))
+        if (file.ownerId !== user.id && (requestScope(req) !== 'back' || !canReviewFile(user, file)))
           throw new AppError(404, 'NOT_FOUND', '资料不存在。');
       }
       const filename = join(uploadDir, file.diskName);
@@ -694,16 +866,16 @@ export function createApp(options = {}) {
           items: db
             .list('certifications')
             .filter((x) => x.ownerId === user.id)
-            .map((x) => certificationView(db, x))
+            .map((x) => presentCertificate(req, user, x))
         });
       if (method === 'POST') {
         if (user.authProvider === 'wechat' && !user.phoneVerified)
           throw new AppError(403, 'PHONE_VERIFICATION_REQUIRED', '提交经营资质前请先完成本人手机号授权。');
         const b = await bodyJson(req);
-        const file = db.get('files', need(b.licenseFileId, '请先上传营业执照。'));
-        checkOwned(user, file);
         need(b.company, '请填写经营主体名称。');
         need(b.scope, '请填写经营范围。');
+        const materials = await validateCertificateMaterials(db, user, b, uploadDir);
+        const file = db.get('files', materials.licenseFileId);
         db.save('files', { ...file, public: false, purpose: 'license' });
         const relevant = /服装|服饰|女装/.test(b.scope) && /批发|零售/.test(b.scope);
         const item = db.save('certifications', {
@@ -712,24 +884,31 @@ export function createApp(options = {}) {
           companyId: user.companyId,
           company: String(b.company).slice(0, 200),
           scope: String(b.scope).slice(0, 2000),
-          licenseFileId: file.id,
+          ...materials,
           status: 'pending',
+          phoneReview: { status: 'pending', result: null },
           precheck: {
             industryScope: relevant ? '符合服装批发零售准入' : '待人工判断',
-            ocrStatus: 'not-configured',
-            notice: '仅文本一致性规则预检；未调用OCR，不代表执照真实或认证通过。'
+            ocrStatus: 'not-configured'
           }
         });
-        db.save('users', { ...user, verified: false, certificationStatus: 'pending' });
+        db.save('users', {
+          ...persistentUser(db, user),
+          verified: false,
+          certificationStatus: 'pending',
+          currentCertificationId: item.id
+        });
         const checked = startCertificatePrecheck(db, ai, user, item);
         audit(db, user, 'submit-certification', item.id);
-        return json(res, 201, { application: checked });
+        return json(res, 201, { application: presentCertificate(req, user, checked) });
       }
     }
     throw new AppError(404, 'NOT_FOUND', '接口不存在。');
   }
 
   async function uploadFile(req, url, user) {
+    if (url.searchParams.get('purpose') === 'certification_video')
+      return uploadCertificateVideo(req, user, db, uploadDir);
     const type = req.headers['content-type'] || '';
     const boundary = type
       .match(/boundary=(?:"([^"]+)"|([^;]+))/i)
@@ -786,7 +965,9 @@ export function createApp(options = {}) {
     const purpose =
       fields.kind === 'license'
         ? 'license'
-        : ['content', 'license', 'diagnosis', 'knowledge', 'private'].includes(fields.purpose)
+        : ['content', 'license', 'certification_photo', 'diagnosis', 'knowledge', 'private'].includes(
+              fields.purpose
+            )
           ? fields.purpose
           : 'private';
     const isPublic = false;

@@ -1,6 +1,7 @@
 import { get, post, patch, del, itemsOf, upload, event } from '../core/api.js';
 import { state, refresh, verified, isSupplier, labels, saveFont, feature } from '../core/state.js';
 import { icon } from '../components/icons.js';
+import { privateMediaUrl } from '../core/workspace.js';
 import {
   esc,
   img,
@@ -18,44 +19,7 @@ import {
   certificationPrecheck
 } from '../components/ui.js';
 
-export async function login(ctx = {}) {
-  const entry = ctx.query?.get('entry') || '';
-  const front = [
-    ['owner', 'user', '店主前台', '看资讯、找货源、诊断门店', '', '/info'],
-    ['supplier', 'box', '厂家前台', '看资讯、货源广场、找客户', '', '/info'],
-    ['owner', 'shield', '未认证店主', '查看审核前后的信息权限', 'owner-guest', '/info'],
-    ['guest', 'user', '游客浏览', '退出演示账号，查看公开信息', '', '/info']
-  ];
-  const backstage = [
-    ['supplier', 'chart', '厂家经营后台', '管理货源、订货会、内容与回访', '', '/manufacturer'],
-    ['admin', 'settings', '平台运营后台', '审核、内容、权益、模型与配置', '', '/admin']
-  ];
-  const views = entry === 'back' ? backstage : entry === 'front' ? front : [...front, ...backstage];
-  const demo = state.mode === 'development-demo';
-  const title = entry === 'back' ? '后台演示入口' : entry === 'front' ? '前台演示入口' : '进入开发演示';
-  return {
-    html: `<div class="login-layout"><div class="login-story"><span class="brand-mark">七</span><span class="eyebrow">七叔女装行业平台</span><h1>把经验、货源<br>和合适的人连接起来。</h1><p>先了解你的身份，再进入适合的工作空间。</p><div class="login-photo">${img('/assets/boutique-interior.jpg', '女装门店参考照片')}</div></div><section class="panel login-panel"><h2>${title}</h2><p class="muted">${demo ? '这些账号仅用于开发演示，不代表真实微信登录或经营资质。' : '当前为正式环境，不开放演示角色切换。'}</p><div class="login-roles">${demo ? views.map(([role, i, label, sub, userId, path]) => `<button class="login-role" data-login="${role}" data-user-id="${userId || ''}" data-route="${path}">${icon(i)}<span><strong>${label}</strong><small>${sub}</small></span>${icon('arrow')}</button>`).join('') : ''}</div>${demo ? '<div class="creator-shortcuts"><a class="btn small" href="#/login?entry=front">前台入口</a><a class="btn small" href="#/login?entry=back">后台入口</a></div>' : ''}<div class="login-divider"><span>正式接入状态</span></div><button class="btn full" id="wechat-login">微信正式登录 · 查看配置状态</button><p class="tiny muted">正式上线需要企业小程序 AppID、微信授权和服务端凭证；开发账号不会绕过生产认证。</p></section></div>`,
-    bind(root) {
-      root.querySelectorAll('[data-login]').forEach((button) => {
-        button.onclick = () => submit(button, async () => {
-          if (state.mode !== 'development-demo') throw new Error('正式环境不开放演示登录。');
-          if (button.dataset.login === 'guest') await post('/auth/logout', {});
-          else await post('/auth/demo', {
-            role: button.dataset.login,
-            ...(button.dataset.userId ? { userId: button.dataset.userId } : {})
-          });
-          await refresh();
-          location.hash = button.dataset.route;
-          window.dispatchEvent(new Event('qishu:refresh'));
-        });
-      });
-      root.querySelector('#wechat-login').onclick = (event) => submit(event.currentTarget, async () => {
-        const result = await post('/auth/wechat', {});
-        toast(result.message || '请在微信小程序中发起正式授权。');
-      });
-    }
-  };
-}
+export { login, registration, backAccount } from './auth.js';
 
 export async function profile() {
   if (!state.user)
@@ -70,7 +34,7 @@ export async function profile() {
     };
   const u = state.user;
   return {
-    html: `<div class="profile-banner"><div class="profile-identity">${avatar(u.name, 'large')}<div><div class="label-row">${badge(labels[u.role] || '用户')}${badge(verified() ? '资质审核通过 · 测试账号' : '待认证', verified() ? 'positive' : 'warning')}</div><h1>${esc(u.name)}</h1><p>${esc(u.companyName || u.companyId || '我的经营空间')}</p></div></div><a class="btn light" href="#/auth">${icon('shield')}认证与资料</a></div><div class="my-grid">${[
+    html: `<div class="profile-banner"><div class="profile-identity">${avatar(u.name, 'large')}<div><div class="label-row">${badge(labels[u.role] || '用户')}${badge(verified() ? (u.demo ? '资质审核通过 · 测试账号' : '已完成资质审核') : '待认证', verified() ? 'positive' : 'warning')}</div><h1>${esc(u.name)}</h1><p>${esc(u.companyName || u.companyId || '我的经营空间')}</p></div></div><a class="btn light" href="#/auth">${icon('shield')}认证与资料</a></div><div class="my-grid">${[
       ['/my/business', 'user', '经营资料', '城市、风格、面积与当前经营需求'],
       ['/creator', 'edit', '创作中心', '草稿、审核与已发布内容'],
       ['/tags', 'layers', '经营偏好', '四到十个标签，调整初始推荐'],
@@ -78,13 +42,7 @@ export async function profile() {
       ['/leads', 'message', '联系与回访', '区分联系意向和实际反馈'],
       ['/diagnosis', 'spark', '诊断与咨询', '门店资料和历史任务'],
       ['/jobs', 'chart', '处理任务', '多模态任务结果和失败状态'],
-      ...(u.role === 'supplier'
-        ? [
-            ['/manufacturer', 'box', '厂家经营后台', '货源、订货会、内容与获客权益'],
-            ['/my/rights', 'shield', '额度与权益', '线下购买后由平台开通']
-          ]
-        : []),
-      ...(u.role === 'admin' ? [['/admin', 'settings', '平台运营后台', '按一级及二级菜单管理平台']] : [])
+      ...(u.role === 'supplier' ? [['/my/rights', 'shield', '额度与权益', '线下购买后由平台开通']] : [])
     ]
       .map(
         ([p, i, t, d]) =>
@@ -100,7 +58,7 @@ export async function profile() {
       .map(([v, t]) => `<option value="${v}" ${state.fontScale === v ? 'selected' : ''}>${t}</option>`)
       .join(
         ''
-      )}</select></div><div class="setting-line"><div><strong>个性化推荐</strong><small>关闭后以非个性化方式浏览；仍可手动筛选。</small></div><label class="switch"><input id="personalized" type="checkbox" ${u.personalized !== false ? 'checked' : ''}><span></span></label></div><button class="btn" id="logout">${icon('logout')}退出当前体验账号</button></section>`,
+      )}</select></div><div class="setting-line"><div><strong>个性化推荐</strong><small>关闭后以非个性化方式浏览；仍可手动筛选。</small></div><label class="switch"><input id="personalized" type="checkbox" ${u.personalized !== false ? 'checked' : ''}><span></span></label></div><button class="btn" id="logout">${icon('logout')}退出本前台账号</button></section>`,
     bind(root) {
       root.querySelector('#font-scale').onchange = (e) => {
         saveFont(Number(e.target.value));
@@ -166,47 +124,7 @@ export async function tags() {
   };
 }
 
-export async function certification() {
-  const r = state.user ? await get('/certifications').catch(() => ({ items: [] })) : { items: [] };
-  const applications = itemsOf(r);
-  return {
-    html:
-      pageHead('经营资料认证', 'AI辅助预审，平台人工终审。批发或零售经营范围满足行业准入。') +
-      `<div class="two-columns"><form class="panel" id="certification-form"><h2>提交营业执照</h2>${field('企业或店铺主体名称', 'company', state.user?.companyName || '', 'text', 'required')}${field('营业执照经营范围', 'scope', '', 'textarea', 'required placeholder="例如：服装批发、服装零售" rows="4"')}<label class="field"><span>营业执照图片</span><input type="file" id="license-file" accept="image/jpeg,image/png,image/webp" required><small>证照按私有文件上传，不向其他用户公开。</small></label><div id="license-preview"></div><label class="check-field"><input type="checkbox" required><span>我确认提供的资料可用于经营资质审核，并已获相应主体授权。</span></label><button class="btn primary full">提交人工审核</button><p class="tiny muted">模型未配置时不会编造OCR或验真结果；平台仍可按资料人工处理。演示账户不能代表真实资格。</p></form><section class="panel"><h2>审核记录</h2>${applications.length ? applications.map((a) => `<div class="audit-record"><div class="section-line"><strong>${esc(a.company || a.companyName)}</strong>${badge(a.status || 'pending', 'subtle')}</div><p>${esc(a.scope || '')}</p><small>${esc(a.reason || a.precheck?.industryScope || a.aiNote || '等待审核记录')}</small>${certificationPrecheck(a)}</div>`).join('') : empty('尚未提交资料', '提交后可查看AI处理状态及人工审核结果。')}<div class="notice">资质审核通过不代表对所有内容或商品质量作出担保。证照不因公开分享而公开。</div></section></div>`,
-    bind(root) {
-      root.addEventListener('click', (e) => {
-        const button = e.target.closest('[data-refresh-cert]');
-        if (!button) return;
-        submit(button, async () => {
-          const fresh = itemsOf(await get('/certifications')).find(
-            (a) => a.id === button.dataset.refreshCert
-          );
-          if (!fresh) throw Error('未找到本人可查看的审核资料。');
-          button.closest('.cert-precheck').outerHTML = certificationPrecheck(fresh);
-        });
-      });
-      let file = null;
-      root.querySelector('#license-file').onchange = (e) => {
-        file = e.target.files[0];
-        if (file) {
-          const url = URL.createObjectURL(file);
-          root.querySelector('#license-preview').innerHTML = img(url, '待提交执照图片', 'license-preview');
-        }
-      };
-      root.querySelector('#certification-form').onsubmit = (e) => {
-        e.preventDefault();
-        submit(e.submitter, async () => {
-          if (!file) throw new Error('请先选择执照图片。');
-          const uploaded = await upload(file, true);
-          await post('/certifications', { ...formData(e.target), licenseFileId: uploaded.id });
-          toast('资料已提交，等待人工审核。');
-          await refresh();
-          window.dispatchEvent(new Event('qishu:refresh'));
-        });
-      };
-    }
-  };
-}
+export { certification } from './certification.js';
 
 export async function creator() {
   const r = await get('/creator'),
@@ -325,7 +243,12 @@ export async function diagnosis() {
           const profile = formData(e.target);
           let fileId;
           if (file) fileId = (await upload(file, true)).id;
-          const r = await post('/jobs', { task: 'diagnosis', message: profile.problem, profile, fileId });
+          const r = await post('/jobs', {
+            task: 'diagnosis',
+            message: profile.problem,
+            profile,
+            fileId
+          });
           const j = r.job || r;
           renderJob(root.querySelector('#diagnosis-result'), j);
           toast('诊断任务已保存，可在处理任务中继续查看。');
@@ -368,12 +291,12 @@ function renderJob(target, j) {
       ? result.type === 'image'
         ? img(mediaUrl, 'AI生成图像', 'generated-image')
         : result.type === 'audio'
-          ? `<audio controls preload="metadata" src="${esc(mediaUrl)}"></audio>`
+          ? `<audio controls preload="metadata" src="${esc(privateMediaUrl(mediaUrl))}"></audio>`
           : result.type === 'video'
             ? `<video controls playsinline preload="metadata" src="${esc(mediaUrl)}"></video>`
             : ''
       : '';
-  target.innerHTML = `<div class="section-line"><strong>${esc({ chat: '知识库咨询', diagnosis: '门店经营诊断', ocr: 'OCR文字识别', asr: '语音识别', tts: '语音合成', image: '图像生成', video: '视频生成' }[j.task] || j.task || '处理任务')}</strong>${badge(j.status || 'queued', j.status === 'completed' ? 'positive' : 'subtle')}</div>${media ? '<div class="generated-media">' + media + '</div>' : ''}${result ? `<div class="result-prose">${esc(typeof result === 'object' ? result.text || result.content || JSON.stringify(result, null, 2) : result)}</div>` : `<p>${esc(j.error?.message || j.error || j.message || '任务已创建，正在等待处理。')}</p>`}${mediaUrl ? `<a class="text-link" href="${esc(mediaUrl)}" target="_blank" rel="noopener">打开生成结果 ${icon('arrow')}</a>` : ''}<a class="text-link tiny" href="#/jobs">查看任务状态 ${icon('arrow')}</a>`;
+  target.innerHTML = `<div class="section-line"><strong>${esc({ chat: '知识库咨询', diagnosis: '门店经营诊断', ocr: 'OCR文字识别', asr: '语音识别', tts: '语音合成', image: '图像生成', video: '视频生成' }[j.task] || j.task || '处理任务')}</strong>${badge(j.status || 'queued', j.status === 'completed' ? 'positive' : 'subtle')}</div>${media ? '<div class="generated-media">' + media + '</div>' : ''}${result ? `<div class="result-prose">${esc(typeof result === 'object' ? result.text || result.content || JSON.stringify(result, null, 2) : result)}</div>` : `<p>${esc(j.error?.message || j.error || j.message || '任务已创建，正在等待处理。')}</p>`}${mediaUrl ? `<a class="text-link" href="${esc(privateMediaUrl(mediaUrl))}" target="_blank" rel="noopener">打开生成结果 ${icon('arrow')}</a>` : ''}<a class="text-link tiny" href="#/jobs">查看任务状态 ${icon('arrow')}</a>`;
   if (['queued', 'running', 'processing'].includes(j.status))
     setTimeout(async () => {
       if (!target.isConnected) return;

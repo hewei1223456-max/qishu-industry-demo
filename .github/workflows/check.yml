@@ -12,6 +12,7 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install -r packages/ingestion/requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: node scripts/check.mjs
       - run: node apps/miniprogram/tools/check.cjs
       - run: npm test
@@ -25,3 +26,5 @@ jobs:
             sleep 1
           done
           node apps/miniprogram/tools/smoke.cjs
+      - name: Native supplier registration against isolated service
+        run: node apps/miniprogram/tools/registration-smoke.cjs

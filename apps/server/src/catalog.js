@@ -177,7 +177,11 @@ export function createLead(db, user, body, config) {
       friendAdded: false
     });
     audit(db, user, 'create-lead', lead.id, { charged: supplier });
-    return { lead, quota: quota(db, user, config), notice: '已记录联系意向，不代表已添加微信或成交。' };
+    return {
+      lead,
+      quota: quota(db, user, config),
+      notice: '已记录联系意向，不代表已添加微信或成交。'
+    };
   });
 }
 export function visibleLeads(db, user) {

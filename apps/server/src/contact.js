@@ -1,5 +1,6 @@
 import { AppError, audit } from './db.js';
 import { requireUser, requireVerified } from './auth.js';
+import { persistentUser } from './auth.js';
 
 export function contactOf(user) {
   requireUser(user);
@@ -59,7 +60,7 @@ export function saveContact(db, user, body) {
   return db.transaction(() => {
     if (qr) db.save('files', { ...qr, purpose: 'contact', public: false });
     const publicContact = { wechat: c.wechat, phone: c.phone, qrUrl: c.qrUrl };
-    db.save('users', { ...user, publicContact, contactConsent: c.consent });
+    db.save('users', { ...persistentUser(db, user), publicContact, contactConsent: c.consent });
     const buyers = db.list('buyers').filter((x) => x.userId === user.id);
     for (const buyer of buyers) db.save('buyers', { ...buyer, publicContact, contactConsent: c.consent });
     audit(db, user, 'update-public-contact', user.id, {

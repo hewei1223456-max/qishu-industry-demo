@@ -1,9 +1,7 @@
 const ui = require('../../services/ui');
-const config = require('../../config');
 Page({
   data: {
     fontPx: 16,
-    demoEnabled: config.demoEnabled === true,
     items: [],
     leads: [],
     quota: null,

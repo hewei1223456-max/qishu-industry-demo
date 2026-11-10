@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { AppError, uid, audit, now } from './db.js';
-import { requireUser, issueSession } from './auth.js';
+import { requireUser, issueSession, loginSelection, persistentUser, requestScope } from './auth.js';
 
 const digest = (x) => createHash('sha256').update(x).digest('hex');
 const OFFICIAL = 'https://api.weixin.qq.com';
@@ -96,6 +96,7 @@ export function createWechatAuth({ db, appId, appSecret, fetchImpl = fetch }) {
     configured: () => !!appId && !!appSecret,
     async login(req, res, body) {
       configured();
+      const selection = loginSelection(req, body);
       rate(req, null, 'login');
       claimCode(body.code, 'login');
       const query = new URLSearchParams({
@@ -111,7 +112,7 @@ export function createWechatAuth({ db, appId, appSecret, fetchImpl = fetch }) {
       if (user && ['disabled', 'suspended', 'deleted'].includes(user.status))
         throw new AppError(403, 'ACCOUNT_DISABLED', '账号暂不可用，请联系平台。');
       if (!user) {
-        const role = body.role === 'supplier' ? 'supplier' : 'owner',
+        const role = selection.requestedRole === 'supplier' ? 'supplier' : 'owner',
           id = uid('wxuser');
         user = db.save('users', {
           id,
@@ -132,18 +133,16 @@ export function createWechatAuth({ db, appId, appSecret, fetchImpl = fetch }) {
           demo: false
         });
       } else {
-        if (user.role === 'admin' && user.adminGrantId) {
-          const grant = db.get('admins', user.adminGrantId);
-          user =
-            grant?.status === 'active' && grant.bindingVerified && grant.userId === user.id
-              ? { ...user, permissions: grant.permissions || [] }
-              : { ...user, role: user.primaryRole || 'owner', permissions: [] };
-        }
+        if (
+          selection.requestedRole !== 'admin' &&
+          (user.primaryRole || user.role) !== selection.requestedRole
+        )
+          throw new AppError(409, 'ROLE_MISMATCH', '此微信已按其他经营身份注册，请选择对应身份登录。');
         user = db.save('users', { ...user, lastLoginAt: now() });
       }
       audit(db, user, 'wechat-login', user.id);
       return {
-        ...issueSession(db, user, res),
+        ...issueSession(db, user, res, selection),
         mode: 'wechat',
         notice: '已验证微信身份；手机号和经营资质需分别授权与审核。'
       };
@@ -188,7 +187,12 @@ export function createWechatAuth({ db, appId, appSecret, fetchImpl = fetch }) {
           'PHONE_ALREADY_BOUND',
           '此手机号已绑定其他账号，请联系平台核查，不能自动合并。'
         );
-      let updated = db.save('users', { ...user, phone, phoneVerified: true, phoneVerifiedAt: now() });
+      let updated = db.save('users', {
+        ...persistentUser(db, user),
+        phone,
+        phoneVerified: true,
+        phoneVerifiedAt: now()
+      });
       const grant = db
         .list('admins')
         .find((x) => x.phone === phone && !['deleted', 'disabled', 'revoked'].includes(x.status));
@@ -208,15 +212,15 @@ export function createWechatAuth({ db, appId, appSecret, fetchImpl = fetch }) {
         });
         updated = db.save('users', {
           ...updated,
-          primaryRole: user.primaryRole || user.role,
-          role: 'admin',
-          adminGrantId: grant.id,
-          permissions: grant.permissions || ['*']
+          adminGrantId: grant.id
         });
       }
       audit(db, updated, 'verify-wechat-phone', updated.id, { adminGranted: !!grant });
       return {
-        ...issueSession(db, updated, res),
+        ...issueSession(db, updated, res, {
+          scope: requestScope(req),
+          requestedRole: user.authRequestedRole || user.primaryRole || user.role
+        }),
         phoneVerified: true,
         mode: 'wechat',
         notice: grant ? '已核验手机号并加载平台授予的管理员权限。' : '手机号已核验；经营资料仍需提交审核。'

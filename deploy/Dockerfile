@@ -1,5 +1,5 @@
 FROM node:24-bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY packages/ingestion/requirements.txt /tmp/requirements.txt
 RUN python3 -m venv /opt/ingestion && /opt/ingestion/bin/pip install --no-cache-dir -r /tmp/requirements.txt

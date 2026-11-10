@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-11-10T11:26:24.234Z",
+  "timestamp": "2026-11-10T12:43:31.315Z",
   "source": {
     "check": "native-source-static",
     "passed": true,
     "scripts": 16,
     "jsons": 15,
     "templates": 11,
-    "handlers": 138,
+    "handlers": 143,
     "pages": 10,
     "errors": [],
     "notVerified": [
@@ -32,9 +32,9 @@
       "经营标签最少四个校验",
       "创作草稿实际写入并归档",
       "AI请求失败后资讯保持可读",
-      "厂家独立客户视角与服务端额度",
+      "厂家材料未审完时找客户受到服务端限制",
       "三种联系渠道解析及复制/二维码预览桩",
-      "公开联络显式同意保存回读及实际联系渠道",
+      "厂家未通过新审核时不能绕过门禁公开联络资料",
       "系统大字号读取",
       "原生返回与无历史 Tab 兜底"
     ],
@@ -44,8 +44,7 @@
       "No real WeChat identity",
       "No upload/camera/microphone device test"
     ],
-    "server": "current-source isolated HTTP + SQLite fixture",
-    "credentials": "none"
+    "server": "isolated current-source HTTP/SQLite fixture"
   },
   "asset": {
     "status": 200,
@@ -64,7 +63,36 @@
   "wxmlStructure": {
     "passed": true,
     "templates": 11,
-    "nativeBooleanAttributesNormalized": ["wx:else", "lazy-load", "scroll-x"],
+    "nativeBooleanAttributesNormalized": [
+      "wx:else",
+      "lazy-load",
+      "scroll-x"
+    ],
     "notWeChatCompile": true
+  },
+  "registration": {
+    "check": "native-registration-http",
+    "passed": true,
+    "checks": [
+      "登录仅三个身份，无旧场景切换入口",
+      "管理员意向登录仅建立基础身份，待平台授权（官方HTTP传输为mock）",
+      "前台管理员会话不能跨入独立后台",
+      "厂家缺项检查覆盖执照、30秒视频及5张照片",
+      "相机入口与10秒视频伪报999秒的服务端拒绝",
+      "五张照片满额后拒绝继续选择，不漂移为5至10张",
+      "真实31秒视频及五张不同照片私有上传，等待人工和电话回访",
+      "提交文件ID，客户端时长不作为认证证据",
+      "私有材料链接游客被拒，本人Bearer下载临时副本预览",
+      "认证核验专用240秒超时，普通请求不变慢",
+      "更换身份清理已下载的私有预览副本",
+      "店主认证不增加厂家视频与照片要求",
+      "所有原生请求与上传固定前台scope"
+    ],
+    "limits": [
+      "Synthetic 64px PNG and real generated 10/31-second MP4 fixtures, not business proof",
+      "wx UI/auth/navigation mocked; no DevTools or device",
+      "Large-upload limit is not a 300MB throughput test",
+      "No real WeChat credentials"
+    ]
   }
 }

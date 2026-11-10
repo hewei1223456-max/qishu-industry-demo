@@ -160,6 +160,19 @@ export function seed(db, { demo = true } = {}) {
     seedProduction(db);
     return;
   }
+  if (!db.get('users', 'supplier-guest'))
+    db.save('users', {
+      id: 'supplier-guest',
+      role: 'supplier',
+      primaryRole: 'supplier',
+      name: '待认证厂家',
+      companyId: 'supplier-guest-company',
+      verified: false,
+      certificationStatus: 'needs_more',
+      tags: [],
+      personalized: true,
+      demo: true
+    });
   if (!db.get('users', 'owner-guest'))
     db.save('users', {
       id: 'owner-guest',

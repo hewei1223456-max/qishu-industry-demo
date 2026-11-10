@@ -1,4 +1,5 @@
 import { get, post, patch, itemsOf } from '../core/api.js';
+import { workspaceScope } from '../core/workspace.js';
 import {
   esc,
   img,
@@ -33,7 +34,7 @@ async function rawPart(id, index, blob) {
       const r = await fetch(`/api/ingestion/uploads/${encodeURIComponent(id)}/parts/${index}`, {
         method: 'PUT',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/octet-stream' },
+        headers: { 'Content-Type': 'application/octet-stream', 'X-Qishu-Scope': workspaceScope() },
         body: blob,
         signal: controller.signal
       });
@@ -59,7 +60,12 @@ async function uploadFile(file, target, onProgress) {
     }
   } catch {}
   if (!upload) {
-    const r = await post('/ingestion/uploads', { name: file.name, size: file.size, mime: file.type, target });
+    const r = await post('/ingestion/uploads', {
+      name: file.name,
+      size: file.size,
+      mime: file.type,
+      target
+    });
     upload = r.upload;
     try {
       localStorage.setItem(key, upload.id);
@@ -195,7 +201,10 @@ export async function ingestion(ctx) {
             const indices = [...target.querySelectorAll('[name=card]:checked')].map((x) => Number(x.value));
             if (!indices.length) throw Error('先选择要发布的卡片。');
             const chosen = target.querySelector('#cards-target').value;
-            const r = await post('/ingestion/jobs/' + j.id + '/publish', { indices, target: chosen });
+            const r = await post('/ingestion/jobs/' + j.id + '/publish', {
+              indices,
+              target: chosen
+            });
             toast('已确认发布 ' + (r.records?.length || indices.length) + ' 张卡片。');
             const fresh = await get('/ingestion/jobs/' + j.id);
             bindJob(fresh.job);

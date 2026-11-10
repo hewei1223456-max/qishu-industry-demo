@@ -4,6 +4,7 @@
   "type": "commonjs",
   "scripts": {
     "check": "node tools/check.cjs",
-    "smoke": "node tools/smoke.cjs"
+    "smoke": "node tools/smoke.cjs",
+    "smoke:registration": "node tools/registration-smoke.cjs"
   }
 }

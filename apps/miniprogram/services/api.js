@@ -9,8 +9,12 @@ async function request(path, data, method) {
     url: base() + '/api' + path,
     method: method || 'GET',
     data,
-    timeout: config.requestTimeout,
-    header: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }
+    timeout: path === '/certifications' && method === 'POST' ? 240000 : config.requestTimeout,
+    header: {
+      'Content-Type': 'application/json',
+      'X-Qishu-Scope': 'front',
+      ...(token ? { Authorization: 'Bearer ' + token } : {})
+    }
   });
   if (result.statusCode < 200 || result.statusCode >= 300) {
     const error = result.data && result.data.error;
@@ -28,17 +32,22 @@ function media(url) {
 }
 async function upload(file, isPrivate, purpose) {
   const token = platform.read('qishu_token');
+  const uploadPurpose = file.type === 'license' ? 'license' : purpose || (isPrivate ? 'private' : 'content');
   const result = await platform.upload({
-    url: base() + '/api/uploads',
+    url:
+      base() +
+      '/api/uploads' +
+      (uploadPurpose === 'certification_video' ? '?purpose=certification_video' : ''),
     filePath: file.path,
     name: 'file',
     formData: {
       private: isPrivate ? 'true' : 'false',
       visibility: 'private',
-      purpose: file.type === 'license' ? 'license' : purpose || (isPrivate ? 'private' : 'content'),
+      purpose: uploadPurpose,
       kind: file.type || 'file'
     },
-    header: token ? { Authorization: 'Bearer ' + token } : {}
+    timeout: uploadPurpose === 'certification_video' ? 600000 : 60000,
+    header: { 'X-Qishu-Scope': 'front', ...(token ? { Authorization: 'Bearer ' + token } : {}) }
   });
   let data;
   try {
@@ -50,6 +59,20 @@ async function upload(file, isPrivate, purpose) {
     throw new Error((data.error && data.error.message) || '上传未完成');
   return data.file || data;
 }
+async function privatePreview(file) {
+  const url = media(file && file.url);
+  if (!url.startsWith(base() + '/api/files/')) throw new Error('只能预览当前服务器授权的私有材料');
+  const token = platform.read('qishu_token');
+  if (!token) throw new Error('请先登录当前前台身份');
+  const result = await platform.download({
+    url,
+    timeout: 600000,
+    header: { 'X-Qishu-Scope': 'front', Authorization: 'Bearer ' + token }
+  });
+  if (result.statusCode < 200 || result.statusCode >= 300 || !result.tempFilePath)
+    throw new Error('材料预览未获授权或未完成，请刷新后重试');
+  return result.tempFilePath;
+}
 module.exports = {
   get: (path) => request(path),
   post: (path, data) => request(path, data, 'POST'),
@@ -57,5 +80,6 @@ module.exports = {
   delete: (path) => request(path, null, 'DELETE'),
   media,
   upload,
+  privatePreview,
   base
 };

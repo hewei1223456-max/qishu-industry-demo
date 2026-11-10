@@ -1,5 +1,6 @@
 import { state, refresh, saveFont, isSupplier, labels } from './core/state.js';
 import { post } from './core/api.js';
+import { isBackWorkspace, workspaceHome } from './core/workspace.js';
 import { route, beginRoute, back } from './core/navigation.js';
 import { icon } from './components/icons.js';
 import { esc, avatar, errorBlock, empty, closeModal, toast } from './components/ui.js';
@@ -26,32 +27,6 @@ import { renderPlacements } from './components/ads.js';
 const app = document.querySelector('#app');
 let cleanup,
   renderVersion = 0;
-const demoViews = {
-  owner: { role: 'owner', path: '/info' },
-  supplier: { role: 'supplier', path: '/info' },
-  manufacturer: { role: 'supplier', path: '/manufacturer' },
-  admin: { role: 'admin', path: '/admin' },
-  unverified: { role: 'owner', userId: 'owner-guest', path: '/info' },
-  guest: { path: '/info' }
-};
-async function switchDemoView(value) {
-  if (state.mode !== 'development-demo') throw new Error('仅开发演示环境可切换视角。');
-  const view = demoViews[value];
-  if (!view) throw new Error('请选择有效的演示视角。');
-  if (view.role) {
-    await post('/auth/demo', { role: view.role, ...(view.userId ? { userId: view.userId } : {}) });
-  } else {
-    await post('/auth/logout', {});
-  }
-  await refresh();
-  if (location.hash === '#' + view.path) await render(false);
-  else location.hash = view.path;
-}
-function demoViewControl() {
-  return state.mode === 'development-demo'
-    ? `<select class="demo-view-switch" id="demo-view-switch" aria-label="切换演示视角"><option value="" selected disabled>切换演示视角</option><option value="owner">店主前台</option><option value="supplier">厂家前台</option><option value="manufacturer">厂家经营后台</option><option value="admin">平台运营后台</option><option value="unverified">未认证店主</option><option value="guest">游客</option></select>`
-    : '';
-}
 const navItems = () =>
   isSupplier()
     ? [
@@ -75,23 +50,32 @@ const active = (path, current) =>
       (path === '/info' && current.args[0] === 'article') ||
       (path === '/sources' && ['product', 'supplier', 'fair', 'fairs'].includes(current.args[0]));
 function brand() {
-  return '<a class="brand" href="#/info"><span class="brand-mark">七</span><span><strong>七叔</strong><small>女装行业平台</small></span></a>';
+  return `<a class="brand" href="#${workspaceHome(state.user)}"><span class="brand-mark">七</span><span><strong>七叔</strong><small>${isBackWorkspace() ? '独立经营管理后台' : '女装行业平台'}</small></span></a>`;
 }
 function shell(ctx) {
-  const adminMode = ctx.args[0] === 'admin',
-    manufacturerMode = ctx.args[0] === 'manufacturer';
-  const mode = adminMode ? 'admin-shell' : manufacturerMode ? 'manufacturer-shell' : 'consumer-shell';
+  const backstage = isBackWorkspace(),
+    user = state.user;
+  const adminMode = backstage && user?.role === 'admin';
+  const manufacturerMode = backstage && user?.role === 'supplier';
+  const home = workspaceHome(user);
+  const mode = adminMode
+    ? 'admin-shell'
+    : manufacturerMode
+      ? 'manufacturer-shell'
+      : backstage
+        ? 'backstage-login-shell'
+        : 'consumer-shell';
   let links = navItems()
     .map(
-      ([p, i, t]) =>
-        `<a href="#${p}" class="nav-item ${active(p, ctx) ? 'active' : ''}">${icon(i)}<span>${t}</span></a>`
+      ([path, name, title]) =>
+        `<a href="#${path}" class="nav-item ${active(path, ctx) ? 'active' : ''}">${icon(name)}<span>${title}</span></a>`
     )
     .join('');
   if (adminMode)
-    links = visibleAdminMenus(state.user)
+    links = visibleAdminMenus(user)
       .map(
-        ([p, i, t]) =>
-          `<a href="#/admin${p ? '/' + p : ''}" class="nav-item ${(ctx.args[1] || '') === p ? 'active' : ''}">${icon(i)}<span>${t}</span></a>`
+        ([path, name, title]) =>
+          `<a href="#/admin${path ? '/' + path : ''}" class="nav-item ${(ctx.args[1] || '') === path ? 'active' : ''}">${icon(name)}<span>${title}</span></a>`
       )
       .join('');
   if (manufacturerMode)
@@ -102,20 +86,25 @@ function shell(ctx) {
       ['/leads', 'message', '联系与回访'],
       ['/creator', 'edit', '创作中心'],
       ['/my/rights', 'shield', '额度与权益'],
-      ['/knowledge', 'folder', '主体知识库']
+      ['/knowledge', 'folder', '主体知识库'],
+      ['/account', 'user', '本后台账号']
     ]
       .map(
-        ([p, i, t], i0) =>
-          `<a href="#${p}" class="nav-item ${i0 === 0 ? 'active' : ''}">${icon(i)}<span>${t}</span></a>`
+        ([path, name, title]) =>
+          `<a href="#${path}" class="nav-item ${ctx.path === path.split('?')[0] ? 'active' : ''}">${icon(name)}<span>${title}</span></a>`
       )
       .join('');
-  const u = state.user;
-  return `<div class="app-shell ${mode}"><div class="drawer-scrim" id="drawer-scrim"></div><aside class="sidebar">${brand()}<div class="side-intro">${adminMode ? '平台运营管理' : manufacturerMode ? '厂家经营管理' : '经验 · 货源 · 经营判断'}</div><nav class="side-nav">${links}</nav>${!adminMode && !manufacturerMode ? `<div class="nav-section-label">我的工作空间</div><nav class="side-nav workspace-nav"><a class="nav-item ${ctx.path === '/creator' ? 'active' : ''}" href="#/creator">${icon('edit')}<span>创作中心</span></a><a class="nav-item" href="#/leads">${icon('message')}<span>联系与回访</span></a>${isSupplier() ? `<a class="nav-item" href="#/manufacturer">${icon('chart')}<span>厂家经营后台</span></a>` : ''}${u?.role === 'admin' ? `<a class="nav-item" href="#/admin">${icon('settings')}<span>平台运营后台</span></a>` : ''}</nav>` : ''}<footer class="sidebar-footer"><a href="#${adminMode || manufacturerMode ? '/info' : '/login'}">${icon(adminMode || manufacturerMode ? 'back' : 'shield')}${adminMode || manufacturerMode ? '回到用户端' : '开发体验入口'}</a><small>开发预览 · 独立测试数据</small></footer></aside><div class="main-shell"><header class="topbar"><button class="icon-button mobile-menu" id="mobile-menu" aria-label="打开导航">${icon('menu')}</button><a class="mobile-brand" href="#/info"><span class="brand-mark">七</span><strong>${adminMode ? '运营后台' : '七叔'}</strong></a><form id="global-search" class="global-search">${icon('search')}<input name="query" placeholder="${adminMode ? '浏览当前管理模块' : isSupplier() ? '搜索货源、资讯或店主需求' : '搜索货源、经验和经营方法'}" aria-label="全站搜索" value="${esc(ctx.query.get('query') || ctx.query.get('q') || '')}"></form><div class="topbar-actions${state.mode === 'development-demo' ? ' has-demo-switch' : ''}">${demoViewControl()}<span class="preview-label">开发预览</span>${u ? `<a class="account-link" href="#/my">${avatar(u.name)}<span>${esc(labels[u.role] || '我的')}</span></a>` : '<a class="text-link login-link" href="#/login">登录演示</a>'}${!adminMode ? `<a class="btn primary top-publish" href="#/publish?kind=${isSupplier() ? 'product' : 'content'}">${icon('plus')}<span>发布</span></a>` : ''}</div></header><main class="page-content" id="page-content"><div class="navigation-line"><button class="text-button" data-back>${icon('back')}返回上一步</button><a href="#${adminMode ? '/admin' : '/info'}">${adminMode ? '运营总览' : '回到首页'}</a><span class="navigation-context">${adminMode ? (Array.isArray(u?.permissions) && !u.permissions.includes('*') ? '按账号授权管理' : '平台最高管理权限') : manufacturerMode ? '厂家经营工作空间' : '开发演示 · 样例资料'}</span></div><div id="page-view"><div class="loading-state"><span></span>正在载入这个模块…</div></div></main></div>${
-    !adminMode && !manufacturerMode
+  if (backstage && !adminMode && !manufacturerMode)
+    links = '<a class="nav-item active" href="#/login">' + icon('shield') + '<span>后台登录</span></a>';
+  const workspaceLinks = !backstage
+    ? `<div class="nav-section-label">我的工作空间</div><nav class="side-nav workspace-nav"><a class="nav-item" href="#/creator">${icon('edit')}<span>创作中心</span></a><a class="nav-item" href="#/leads">${icon('message')}<span>联系与回访</span></a></nav>`
+    : '';
+  return `<div class="app-shell ${mode}" data-workspace="${backstage ? 'back' : 'front'}"><div class="drawer-scrim" id="drawer-scrim"></div><aside class="sidebar">${brand()}<div class="side-intro">${adminMode ? '平台管理员后台' : manufacturerMode ? '厂家经营后台' : backstage ? '后台独立登录' : '经验 · 货源 · 经营判断'}</div><nav class="side-nav">${links}</nav>${workspaceLinks}<footer class="sidebar-footer"><a href="#/login">${icon('shield')}${backstage ? '本后台登录 / 切换身份' : '前台登录 / 切换身份'}</a><small>${backstage ? '后台会话独立于前台' : '前台会话独立于后台'}</small></footer></aside><div class="main-shell"><header class="topbar"><button class="icon-button mobile-menu" id="mobile-menu" aria-label="打开导航">${icon('menu')}</button><a class="mobile-brand" href="#${home}"><span class="brand-mark">七</span><strong>${backstage ? '经营后台' : '七叔'}</strong></a>${!backstage ? `<form id="global-search" class="global-search">${icon('search')}<input name="query" placeholder="搜索货源、资讯和经营需求" aria-label="全站搜索" value="${esc(ctx.query.get('query') || ctx.query.get('q') || '')}"></form>` : '<span class="backstage-header-label">' + (adminMode ? '平台管理员后台' : manufacturerMode ? '厂家经营后台' : '后台登录') + '</span>'}<div class="topbar-actions"><a class="btn light small" href="#/login">${backstage ? '后台身份登录' : '前台身份登录'}</a>${user ? `<a class="account-link" href="#${backstage ? '/account' : '/my'}">${avatar(user.name)}<span>${esc(labels[user.role] || '我的')}</span></a><button class="text-button tiny" id="workspace-logout">退出${backstage ? '后台' : '前台'}</button>` : ''}${user && (!backstage || manufacturerMode) ? `<a class="btn primary top-publish" href="#/publish?kind=${isSupplier() ? 'product' : 'content'}">${icon('plus')}<span>发布</span></a>` : ''}</div></header><main class="page-content" id="page-content"><div class="navigation-line"><button class="text-button" data-back>${icon('back')}返回上一步</button><a href="#${home}">${backstage ? '后台首页' : '回到首页'}</a><span class="navigation-context">${backstage ? '独立后台会话' : '前台用户空间'}</span></div><div id="page-view"><div class="loading-state"><span></span>正在载入这个模块…</div></div></main></div>${
+    !backstage
       ? `<nav class="bottom-nav" aria-label="主要导航">${navItems()
           .map(
-            ([p, i, t]) =>
-              `<a href="#${p}" class="${active(p, ctx) ? 'active' : ''}">${icon(i)}<span>${t}</span></a>`
+            ([path, name, title]) =>
+              `<a href="#${path}" class="${active(path, ctx) ? 'active' : ''}">${icon(name)}<span>${title}</span></a>`
           )
           .join('')}</nav>`
       : ''
@@ -124,6 +113,45 @@ function shell(ctx) {
 
 async function resolve(ctx) {
   const [page, id] = ctx.args;
+  const backstage = isBackWorkspace();
+  if (page === 'login') return workspace.login(ctx);
+  if (page === 'register') return workspace.registration(ctx);
+  if (backstage) {
+    if (!state.user) return workspace.login(ctx);
+    if (!['supplier', 'admin'].includes(state.user.role))
+      return {
+        html: empty(
+          '本账号没有后台身份',
+          '本后台只开放厂家和平台管理员身份。',
+          '<a class="btn" href="#/login">返回后台登录</a>'
+        )
+      };
+    if (page === 'account' || (page === 'my' && !id)) return workspace.backAccount(ctx);
+    if (['info', 'home', 'sources', 'article', 'supplier', 'fairs', 'diagnosis', 'tags'].includes(page))
+      return {
+        html: empty(
+          '当前为独立经营后台',
+          '本端不自动切换到前台，也不共用前台登录状态。',
+          '<a class="btn" href="#' + workspaceHome(state.user) + '">返回后台首页</a>'
+        )
+      };
+    if (page === 'manufacturer' && state.user.role !== 'supplier')
+      return {
+        html: empty(
+          '当前不是厂家后台身份',
+          '如需切换，请返回本后台登录页。',
+          '<a class="btn" href="#/login">本后台登录</a>'
+        )
+      };
+  } else if (['admin', 'manufacturer', 'account'].includes(page)) {
+    return {
+      html: empty(
+        '当前为前台用户空间',
+        '经营后台使用独立地址和会话，前台不会自动进入后台。',
+        '<a class="btn" href="#/info">回到前台首页</a>'
+      )
+    };
+  }
   const publicPages = [
     'info',
     'home',
@@ -250,7 +278,7 @@ async function resolve(ctx) {
     html: empty(
       '没有找到这个页面',
       '这个功能可能已经下架，其他模块仍可以继续使用。',
-      '<a class="btn primary" href="#/info">回到首页</a>'
+      '<a class="btn primary" href="#' + workspaceHome(state.user) + '">回到本端首页</a>'
     )
   };
 }
@@ -263,52 +291,50 @@ async function render(restore = true) {
   const ctx = route(),
     restoreScroll = restore ? beginRoute() : () => {};
   app.innerHTML = shell(ctx);
-  const demoSwitch = app.querySelector('#demo-view-switch');
-  if (demoSwitch) {
-    demoSwitch.onchange = async () => {
-      const value = demoSwitch.value;
-      demoSwitch.value = '';
-      demoSwitch.disabled = true;
-      try {
-        await switchDemoView(value);
-      } catch (error) {
-        toast(error.message);
-      } finally {
-        demoSwitch.value = '';
-        demoSwitch.disabled = false;
-      }
-    };
-  }
+  app.querySelector('#workspace-logout')?.addEventListener('click', async (event) => {
+    event.currentTarget.disabled = true;
+    try {
+      await post('/auth/logout', {});
+      await refresh();
+      location.hash = '/login';
+      await render(false);
+    } catch (error) {
+      toast(error.message);
+    }
+  });
   app
     .querySelector('#mobile-menu')
     ?.addEventListener('click', () => document.querySelector('.app-shell').classList.toggle('drawer-open'));
   app
     .querySelector('#drawer-scrim')
     ?.addEventListener('click', () => document.querySelector('.app-shell').classList.remove('drawer-open'));
-  app
-    .querySelectorAll('[data-back]')
-    .forEach((b) => (b.onclick = () => back(ctx.args[0] === 'admin' ? '/admin' : '/info')));
-  app.querySelector('#global-search').onsubmit = (e) => {
-    e.preventDefault();
-    const q = new FormData(e.target).get('query');
-    location.hash =
-      (ctx.path === '/sources' ? '/sources?query=' : ctx.path === '/buyers' ? '/buyers?query=' : '/info?q=') +
-      encodeURIComponent(q);
-  };
+  app.querySelectorAll('[data-back]').forEach((b) => (b.onclick = () => back(workspaceHome(state.user))));
+  const searchForm = app.querySelector('#global-search');
+  if (searchForm)
+    searchForm.onsubmit = (e) => {
+      e.preventDefault();
+      const q = new FormData(e.target).get('query');
+      location.hash =
+        (ctx.path === '/sources'
+          ? '/sources?query='
+          : ctx.path === '/buyers'
+            ? '/buyers?query='
+            : '/info?q=') + encodeURIComponent(q);
+    };
   const view = app.querySelector('#page-view');
   try {
     const result = await resolve(ctx);
     if (version !== renderVersion) return;
     view.innerHTML = result.html || '';
     cleanup = result.bind?.(view);
-    renderPlacements(ctx, view);
+    if (!isBackWorkspace()) renderPlacements(ctx, view);
     restoreScroll();
     document.title = (view.querySelector('h1')?.textContent || '七叔女装行业平台') + ' · 七叔';
   } catch (e) {
     if (version !== renderVersion) return;
     view.innerHTML =
       errorBlock(e.message, ctx.key) +
-      `<div class="module-fallback"><p>当前模块未能加载，导航和其他功能仍然可用。</p><a class="btn" href="#/info">浏览资讯</a><a class="btn" href="#/sources">查看货源</a></div>`;
+      `<div class="module-fallback"><p>当前模块未能加载，导航和其他功能仍然可用。</p><a class="btn" href="#${workspaceHome(state.user)}">返回本端首页</a></div>`;
     restoreScroll();
   }
 }

@@ -34,6 +34,14 @@ export function openDatabase(filename) {
     CREATE TABLE IF NOT EXISTS config_versions(version INTEGER PRIMARY KEY AUTOINCREMENT,data TEXT NOT NULL,actor TEXT,created TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS quota_charges(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,buyer_id TEXT NOT NULL,day TEXT NOT NULL,UNIQUE(company_id,buyer_id,day));
   `);
+  const sessionColumns = raw
+    .prepare('PRAGMA table_info(sessions)')
+    .all()
+    .map((x) => x.name);
+  if (!sessionColumns.includes('scope'))
+    raw.exec("ALTER TABLE sessions ADD COLUMN scope TEXT NOT NULL DEFAULT 'front'");
+  if (!sessionColumns.includes('requested_role'))
+    raw.exec('ALTER TABLE sessions ADD COLUMN requested_role TEXT');
   return {
     raw,
     get(kind, id) {

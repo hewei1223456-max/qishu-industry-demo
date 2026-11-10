@@ -171,7 +171,7 @@ export async function overview() {
       pageHead(
         '先处理影响用户使用的事情',
         '平台运营工作台 · 测试数据库实时记录',
-        '<a class="btn light" href="#/info">查看用户端</a>'
+        '<a class="btn light" href="#/account">本后台账号</a>'
       ) +
       `<div class="admin-stats">${stats.map(([n, v, p]) => `<a class="panel" href="#${p}"><span>${n}</span><strong>${v}</strong><small>查看处理 ${icon('arrow')}</small></a>`).join('')}</div><div class="admin-overview-grid"><section class="panel table-panel"><div class="table-heading"><h2>待审核主体</h2><a class="text-link" href="#/admin/users">全部审核 ${icon('arrow')}</a></div>${
         certs.length
@@ -195,6 +195,8 @@ export async function overview() {
 }
 
 export async function resourcePage(resource, ctx) {
+  if (resource === 'certifications')
+    return import('./certification.js').then((module) => module.reviewCertifications(ctx));
   const r = await get('/admin/' + resource),
     items = itemsOf(r);
   return {

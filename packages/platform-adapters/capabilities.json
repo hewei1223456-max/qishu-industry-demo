@@ -16,7 +16,12 @@
       "clipboard",
       "preview-image",
       "wx-login-entry",
-      "audio-playback"
+      "audio-playback",
+      "multi-photo-selection",
+      "camera-only-venue-video",
+      "front-scoped-requests",
+      "authenticated-private-download",
+      "temporary-preview-cleanup"
     ],
     "configured": {
       "productionAppId": false,
@@ -42,6 +47,10 @@
   "native": {
     "status": "contract-only",
     "implemented": [],
-    "targets": ["ios", "android", "harmony"]
+    "targets": [
+      "ios",
+      "android",
+      "harmony"
+    ]
   }
 }

@@ -64,7 +64,7 @@ Page({
     }
   },
   async loadBuyers() {
-    this.setData({ loading: true, error: '' });
+    this.setData({ loading: true, error: '', buyers: [], quota: null, contactChannels: [] });
     try {
       await getApp().refresh();
       ui.sync(this, 2);

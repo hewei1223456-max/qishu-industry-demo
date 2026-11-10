@@ -11,6 +11,9 @@ async function fixture(t) {
   const root = resolve('data'),
     dataDir = mkdtempSync(join(root, 'backend-security-'));
   const app = createApp({ dbPath: ':memory:', dataDir });
+  for (const user of app.db.list('users').filter((x) => x.role === 'supplier'))
+    app.db.save('users', { ...user, verified: true, certificationPolicyVersion: 2 });
+  const tokenScopes = new Map();
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   t.after(async () => {
@@ -20,12 +23,21 @@ async function fixture(t) {
   const request = async (path, method = 'GET', body, token) => {
     const r = await fetch(base + '/api' + path, {
       method,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Qishu-Scope': tokenScopes.get(token) || body?.scope || 'front',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     return { status: r.status, json: await r.json() };
   };
-  const login = async (role, userId) => (await request('/auth/demo', 'POST', { role, userId })).json.token;
+  const login = async (role, userId) => {
+    const scope = role === 'admin' ? 'back' : 'front';
+    const r = await request('/auth/demo', 'POST', { role, userId, scope });
+    tokenScopes.set(r.json.token, scope);
+    return r.json.token;
+  };
   return { app, request, login };
 }
 
@@ -61,7 +73,10 @@ test('RBAC: empty permission denies admin routes, grants update live, disabled b
   const bootstrap = (await f.request('/bootstrap', 'GET', undefined, limited)).json;
   assert.equal(bootstrap.config.systemPrompts, undefined);
   assert.deepEqual(bootstrap.user.permissions, []);
-  f.app.db.save('admins', { ...f.app.db.get('admins', 'limited-test-grant'), permissions: ['content:read'] });
+  f.app.db.save('admins', {
+    ...f.app.db.get('admins', 'limited-test-grant'),
+    permissions: ['content:read']
+  });
   assert.equal((await f.request('/admin/content', 'GET', undefined, limited)).status, 200);
   assert.equal(
     (await f.request('/admin/content/article-01', 'PATCH', { title: '禁止越权修改' }, limited)).status,
@@ -95,7 +110,10 @@ test('RBAC: empty permission denies admin routes, grants update live, disabled b
     companyId: 'supplier-01',
     status: '待回访'
   });
-  f.app.db.save('admins', { ...f.app.db.get('admins', 'limited-test-grant'), permissions: ['leads:read'] });
+  f.app.db.save('admins', {
+    ...f.app.db.get('admins', 'limited-test-grant'),
+    permissions: ['leads:read']
+  });
   assert.ok(
     (await f.request('/leads', 'GET', undefined, limited)).json.items.some((x) => x.id === 'foreign-lead')
   );

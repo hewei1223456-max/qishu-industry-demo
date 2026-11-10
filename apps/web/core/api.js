@@ -1,3 +1,5 @@
+import { workspaceScope } from './workspace.js';
+
 export class ApiError extends Error {
   constructor(message, status, code) {
     super(message);
@@ -9,14 +11,18 @@ export async function api(path, options = {}) {
   const controller = new AbortController(),
     timeout = setTimeout(() => controller.abort(), options.timeout ?? 15000);
   try {
-    const body = options.body;
+    let body = options.body;
+    if (path.startsWith('/auth/') && body && !(body instanceof FormData)) {
+      body = { ...body, scope: workspaceScope() };
+    }
     const response = await fetch('/api' + path, {
       credentials: 'same-origin',
       ...options,
       signal: controller.signal,
       headers: {
         ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-        ...options.headers
+        ...options.headers,
+        'X-Qishu-Scope': workspaceScope()
       },
       body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body)
     });
@@ -43,7 +49,7 @@ export async function api(path, options = {}) {
 }
 export const get = (path) => api(path);
 export const post = (path, body, options = {}) => api(path, { ...options, method: 'POST', body });
-export const patch = (path, body) => api(path, { method: 'PATCH', body });
+export const patch = (path, body, options = {}) => api(path, { ...options, method: 'PATCH', body });
 export const put = (path, body) => api(path, { method: 'PUT', body });
 export const del = (path) => api(path, { method: 'DELETE' });
 export const itemsOf = (data) => data?.items || data?.data || [];
@@ -54,12 +60,16 @@ export const event = (type, itemId, itemType, duration) =>
     itemType,
     duration
   }).catch(() => null);
-export async function upload(file, privateFile = false) {
+export async function upload(file, privateFile = false, purpose = privateFile ? 'private' : 'content') {
   const body = new FormData();
   body.append('file', file);
   body.append('private', String(privateFile));
-  body.append('purpose', privateFile ? 'private' : 'content');
+  body.append('purpose', purpose);
   body.append('visibility', 'private');
-  const r = await api('/uploads', { method: 'POST', body, timeout: 45000 });
+  const r = await api('/uploads?purpose=' + encodeURIComponent(purpose), {
+    method: 'POST',
+    body,
+    timeout: purpose === 'certification_video' ? 300000 : 45000
+  });
   return r.file || r;
 }

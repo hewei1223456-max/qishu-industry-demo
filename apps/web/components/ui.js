@@ -1,4 +1,5 @@
 import { icon } from './icons.js';
+import { privateMediaUrl } from '../core/workspace.js';
 export const esc = (value) =>
   String(value ?? '').replace(
     /[&<>"']/g,
@@ -36,7 +37,7 @@ const imagePlaceholder = (label, cls = '', hidden = false) =>
   `<span class="media-placeholder ${esc(cls)}" role="img" aria-label="${esc(label)}" ${hidden ? 'hidden' : ''}>${icon('image')}<span>${esc(label)}</span></span>`;
 export function img(src, alt = '', cls = '', missingLabel = '暂无图片') {
   if (!String(src || '').trim()) return imagePlaceholder(missingLabel, cls);
-  return `<img class="${esc(cls)}" src="${esc(src)}" alt="${esc(alt)}" loading="lazy" onload="this.style.removeProperty('display');this.nextElementSibling.hidden=true" onerror="this.style.display='none';this.nextElementSibling.hidden=false">${imagePlaceholder('图片暂不可用', cls, true)}`;
+  return `<img class="${esc(cls)}" src="${esc(privateMediaUrl(src))}" alt="${esc(alt)}" loading="lazy" onload="this.style.removeProperty('display');this.nextElementSibling.hidden=true" onerror="this.style.display='none';this.nextElementSibling.hidden=false">${imagePlaceholder('图片暂不可用', cls, true)}`;
 }
 export const empty = (title = '暂无内容', desc = '', action = '') =>
   `<div class="empty-state">${icon('folder')}<h3>${esc(title)}</h3><p>${esc(desc)}</p>${action}</div>`;

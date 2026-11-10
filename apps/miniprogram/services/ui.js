@@ -28,10 +28,14 @@ function masonry(items) {
 }
 function sync(page, selected) {
   const app = getApp();
+  const adminPending = app.globalData.adminAuthorizationRequired || !!(app.globalData.user && (app.globalData.user.adminAuthorizationRequired || app.globalData.user.requestedRole === 'admin' && app.globalData.user.role !== 'admin'));
   page.setData({
     fontPx: Math.round(16 * platform.font()),
     large: platform.font() > 1.3,
     user: app.globalData.user,
+    adminPending: !!adminPending,
+    administrator: !!(app.globalData.user && app.globalData.user.role === 'admin'),
+    identityLabel: adminPending ? '管理员待授权' : app.globalData.user ? ({owner:'店主',supplier:'厂家',admin:'平台管理员'}[app.globalData.user.role] || '用户') : '游客',
     needsTags: !!(
       app.globalData.user &&
       app.globalData.user.verified &&

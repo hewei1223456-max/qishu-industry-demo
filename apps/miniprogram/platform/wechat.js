@@ -11,9 +11,37 @@ function call(method, options) {
   });
 }
 let recorder, audioPlayer;
+const privateDownloads = new Set();
+function chooseMedia(kind, count, sourceType = ['album', 'camera']) {
+  return call('chooseMedia', { count, mediaType: [kind], sourceType, camera: 'back', maxDuration: 60 }).then(
+    (r) =>
+      r.tempFiles.map((f, index) => ({
+        path: f.tempFilePath,
+        name: kind + '-' + Date.now() + '-' + index + (kind === 'video' ? '.mp4' : '.jpg'),
+        type: kind,
+        duration: Number(f.duration) || null,
+        size: Number(f.size) || 0
+      }))
+  );
+}
 module.exports = {
   request: (options) => call('request', options),
   upload: (options) => call('uploadFile', options),
+  download: async (options) => {
+    const result = await call('downloadFile', options);
+    if (result.statusCode >= 200 && result.statusCode < 300 && result.tempFilePath)
+      privateDownloads.add(result.tempFilePath);
+    return result;
+  },
+  clearDownloads: async () => {
+    const paths = [...privateDownloads];
+    privateDownloads.clear();
+    if (typeof wx.getFileSystemManager !== 'function') return;
+    const files = wx.getFileSystemManager();
+    await Promise.all(
+      paths.map((filePath) => new Promise((resolve) => files.unlink({ filePath, complete: resolve })))
+    );
+  },
   read: (key) => {
     try {
       return wx.getStorageSync(key);
@@ -50,12 +78,7 @@ module.exports = {
   login: () => call('login', {}),
   choose: (kind) => {
     if (kind === 'image' || kind === 'video') {
-      return call('chooseMedia', {
-        count: 1,
-        mediaType: [kind],
-        sourceType: ['album', 'camera'],
-        maxDuration: 60
-      }).then((r) => ({ path: r.tempFiles[0].tempFilePath, name: kind + '-' + Date.now(), type: kind }));
+      return chooseMedia(kind, 1).then((files) => files[0]);
     }
     return call('chooseMessageFile', { count: 1, type: 'file' }).then((r) => ({
       path: r.tempFiles[0].path,
@@ -63,6 +86,8 @@ module.exports = {
       type: kind
     }));
   },
+  chooseMany: (kind, count) => chooseMedia(kind, Math.max(1, Math.min(9, Number(count) || 1))),
+  captureVideo: () => chooseMedia('video', 1, ['camera']).then((files) => files[0]),
   record: () =>
     new Promise((resolve, reject) => {
       if (typeof wx.getRecorderManager !== 'function') return reject(new Error('当前环境不支持录音'));

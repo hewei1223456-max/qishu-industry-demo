@@ -6,7 +6,9 @@ Node.js 24 内置 HTTP、SQLite，无第三方 Node 运行依赖。运行 `npm s
 
 将本目录 `.env.example` 复制为工程根目录 `.env` 再填写服务端变量。`npm start` 会读取根目录 `.env`；不要提交真实凭证。直接执行 Node 时自行提供环境。PowerShell 的微信配置名称为 `WX_APP_ID`、`WX_APP_SECRET`，数据库路径由 `DATA_DIR`、可选 `DB_PATH` 决定。域名、HTTPS、微信后台合法域名、AppID配置必须与实际部署一致。
 
-开发模式有合成示例商家、内容和固定测试身份。`POST /api/auth/demo {role,userId?}` 返回 HttpOnly Cookie 与随机 Bearer Token，固定用户包括 `owner-01`、`owner-02`、`owner-guest`（未认证）、`supplier-01`、`supplier-02`、`admin-01`。此入口仅开发模式开放，并且不能冒用真实微信账号。
+开发模式有合成示例商家、内容和固定测试身份。`POST /api/auth/demo {role,userId?,scope}` 返回 HttpOnly Cookie 与随机 Bearer Token，固定用户包括 `owner-01`、`owner-02`、`owner-guest`（未认证）、`supplier-01`、`supplier-02`、`supplier-guest`、`admin-01`。厂家示例账号也需补齐新材料，不预设资质通过。此入口仅开发模式开放，并且不能冒用真实微信账号。
+
+所有API用 `X-Qishu-Scope: front|back` 标记当前端口；省略为front。登录body.scope必须一致。前台三身份，后台仅厂家和获授平台管理员。Cookie分别为 `qishu_front_session`、`qishu_back_session`，Bearer在SQLite内绑定scope，另一端登录/退出不替换或清除本端会话。`/api/admin/*`和导入管理只接受back；前台管理员也拿不到后台提示词、官方知识原文或跨用户任务。原旧无scope Cookie失效，旧Bearer仅可能按front处理，绝不作为back。角色按会话意向及实际授权投影，不因切端而改写数据库持久role。
 
 生产使用 `NODE_ENV=production`、`ALLOW_DEMO_AUTH=false`、独立全新 `DATA_DIR`。生产初始化仅加入默认字典、可编辑方案和禁用的模型渠道，不生成虚构的公开内容、商家或已认证账号。直接用演示库进入正式模式会明确拒绝启动；原库不会被清理。真实资料需重新审核导入。初始付费方案尚未启用，平台应先配置实际权益。
 
@@ -16,10 +18,16 @@ Node.js 24 内置 HTTP、SQLite，无第三方 Node 运行依赖。运行 `npm s
 
 ## 微信认证流程
 
-1. 小程序 `wx.login` 获得一次性 code，调用 `/api/auth/wechat {code,role:owner|supplier}`。服务端请求官方 `sns/jscode2session`，创建独立会话。客户端不能指定管理员身份，`session_key` 不回传、不持久化。
+1. 小程序 `wx.login` 获得一次性 code，调用 `/api/auth/wechat {code,requestedRole:owner|supplier|admin,scope}`，兼容role字段。服务端请求官方 `sns/jscode2session`，创建独立会话。admin只是登录/申请意向；无平台授权返回 `adminAuthorizationRequired`，不能自行提权。`session_key` 不回传、不持久化。
 2. 本人通过微信手机号授权按钮获得 phone code，带 Bearer 调用 `/api/auth/phone {code}`。服务端缓存官方 `stable_token`，调用 `wxa/business/getuserphonenumber`，校验手机号和可用的 AppID watermark，不能接受前端直接填写的手机号作为核验结果。
 3. 经营资料上传后保持私有，提交 `/api/certifications` 进入待人工审核。若已有启用、带密钥且声明ocr能力的渠道，自动排入OCR识别任务；本人和授权管理员读取审核记录时同步任务状态、提取字段及填报一致性提示。无渠道明确not-configured，识别失败仍保留人工待审，任何AI结果都不会自动通过认证。服装批发、零售视为行业准入，无需另证女装；文字识别不等于执照验真。人工通过才开放对应经营权限。
 4. 微信服务未配置返回503；凭证失效、使用过或官方拒绝不会生成登录成功结果。真实凭证与微信真机授权仍需部署后联调。官方HTTP协议已通过注入式 mock 测试，mock 通过不等于真实微信审核通过。
+
+厂家认证另须 `venueVideoFileId` 及恰好5个不同的 `venuePhotoFileIds`。视频通过 `/api/uploads?purpose=certification_video` 流式multipart上传，单文件最多300MiB；普通上传仍25MiB，照片purpose为certification_photo，执照license。服务端用ffprobe解码计帧核验真实时长至少30秒，不接受客户端duration；ffmpeg实际解码照片，并比较文件哈希与归一化像素哈希，重复、伪图、他人材料均拒绝。需安装可执行ffprobe和ffmpeg，可由 `QISHU_FFPROBE` / `QISHU_FFMPEG` 指定；工具不可用明确阻止认定合格，不能靠文件名或浏览器时长代替。
+
+厂家材料合格仍是pending。获授审核员通过专用 `POST /api/admin/certifications/:id/phone-review` 记录真实人工电话、结果、备注和时间，服务端记录操作人。只有result=confirmed（已接通且核对一致）、confirmedCall=true才记passed；unreachable保持待回访，inconsistent/rejected失败，任何回访结果都不自动批准。平台再人工PATCH approved才解锁。更改材料/主体、改为待审、删除当前认证会撤回权限；历史厂家缺新材料自动needs_more但不删除原记录，旧申请不能覆盖新申请。店主继续执照人工审核，不强加厂家视频与回访条件。
+
+原始证照/照片/视频只供本人或back端获授certifications权限的审核员读取。返回的短期材料URL同时绑定scope、当前Cookie/Bearer和有效会话；复制链接给游客或其他用户不能读取。Web播放器使用URL的scope选择同端Cookie；小程序应带Bearer下载到本机临时文件后预览，不能把链接当公开媒体。所有认证用途文件禁止转成资讯/商品公开素材。
 
 接口依据：[登录](https://developers.weixin.qq.com/miniprogram/dev/OpenApiDoc/user-login/code2Session.html)、[手机号](https://developers.weixin.qq.com/miniprogram/dev/OpenApiDoc/user-info/phone-number/getPhoneNumber.html)、[稳定令牌](https://developers.weixin.qq.com/miniprogram/dev/OpenApiDoc/mp-access-token/getStableAccessToken.html)。
 

@@ -4916,36 +4916,138 @@ img {
 .table-scroll .cert-precheck summary {
   font-size: 0.72rem;
 }
-.topbar .global-search {
-  min-width: 0;
+.topbar {
+  height: auto;
+  flex-wrap: wrap;
 }
-.topbar-actions.has-demo-switch {
+.topbar-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
   min-width: 0;
   max-width: 100%;
+}
+.backstage-header-label {
+  color: var(--brand);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.backstage-login-shell .page-content {
+  padding-bottom: 40px;
+}
+.registration-panel {
+  max-width: 900px;
+}
+.registration-panel > p {
+  margin-top: 18px;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.identity-tabs .icon {
+  width: 18px;
+  height: 18px;
+}
+.certification-identities {
+  margin-bottom: 24px;
+}
+.venue-material-form {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+  margin-top: 22px;
+}
+.venue-material-form > p {
+  margin: 10px 0 20px;
+}
+.venue-material-form video,
+.certificate-materials video {
+  display: block;
+  width: 100%;
+  max-height: 380px;
+  background: #172b26;
+  border-radius: 7px;
+  margin: 12px 0;
+}
+.certificate-materials {
+  margin: 18px 0;
+}
+.certificate-materials details {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fafbf7;
+}
+.certificate-materials summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--brand);
+  font-size: 0.8rem;
+}
+.certificate-material-grid {
+  display: grid;
+  gap: 22px;
+}
+.certificate-material-grid h4 {
+  margin-bottom: 10px;
+}
+.certificate-license {
+  display: block;
+  width: 100%;
+  max-height: 350px;
+  object-fit: contain;
+}
+.certificate-photos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
-.demo-view-switch {
-  min-width: 0;
-  max-width: 100%;
-  min-height: 44px;
-  padding: 9px 8px;
-  border: 1px solid #c6d4c2;
-  border-radius: 6px;
-  background: #edf3e7;
-  color: var(--brand);
-  font-size: 0.76rem;
-  line-height: 1.5;
-  cursor: pointer;
+.certificate-photos > img {
+  display: block;
+  width: 100%;
+  height: 125px;
+  object-fit: contain;
+  background: #eef2e8;
+  border-radius: 5px;
+}
+.phone-review-record,
+.phone-review-form {
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 23px;
+}
+.phone-review-record p,
+.phone-review-record small {
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.phone-review-form h3 {
+  margin-bottom: 20px;
+}
+.review-decision {
+  margin-top: 22px;
+}
+.review-decision > .btn {
+  margin: 0 8px 8px 0;
+}
+.certificate-review-modal {
+  max-width: 800px;
 }
 @media (max-width: 640px) {
-  .topbar-actions.has-demo-switch {
-    gap: 8px;
+  .backstage-header-label {
+    display: none;
   }
-  .demo-view-switch {
-    font-size: 0.74rem;
+  .certificate-photos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .certificate-photos > img {
+    height: 115px;
+  }
+  .certificate-review-modal {
+    max-width: 100%;
+  }
+}
+.topbar .global-search {
+  min-width: 0;
 }
 @media (prefers-reduced-motion: reduce) {
   * {

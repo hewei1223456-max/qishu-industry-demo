@@ -9,8 +9,9 @@ Page({
     demoEnabled: config.demoEnabled,
     apiBase: ui.api.base(),
     roles: [
-      { id: 'owner', title: '店主开发账号', desc: '资讯、找货源、店铺诊断、我的' },
-      { id: 'supplier', title: '厂家开发账号', desc: '资讯、货源广场、找客户、我的' }
+      { id: 'owner', title: '店主', desc: '资讯、找货源、店铺诊断、我的' },
+      { id: 'supplier', title: '厂家', desc: '资讯、货源广场、找客户、我的；需完成厂家材料审核' },
+      { id: 'admin', title: '平台管理员', desc: '身份须经平台授权；选择此项不会自动取得管理权限' }
     ]
   },
   onShow() {
@@ -20,14 +21,17 @@ Page({
     ui.platform.back('/pages/me/index');
   },
   chooseRole(e) {
-    this.setData({ authRole: e.currentTarget.dataset.role });
+    const role = e.currentTarget.dataset.role;
+    if (['owner', 'supplier', 'admin'].includes(role)) this.setData({ authRole: role });
   },
   async wechat() {
     if (this.data.busy) return;
     this.setData({ busy: true, error: '' });
     try {
       await getApp().wechatLogin(this.data.authRole);
-      ui.platform.toast('微信登录已完成');
+      ui.platform.toast(
+        getApp().globalData.adminAuthorizationRequired ? '微信身份已验证，管理员权限待授权' : '微信登录已完成'
+      );
       ui.platform.tab('/pages/me/index');
     } catch (e) {
       this.setData({ error: e.message });
@@ -39,7 +43,7 @@ Page({
     if (this.data.busy) return;
     this.setData({ busy: true, error: '' });
     try {
-      await getApp().demoLogin(e.currentTarget.dataset.role);
+      await getApp().demoLogin(e.currentTarget.dataset.role || this.data.authRole);
       ui.platform.tab('/pages/me/index');
     } catch (error) {
       this.setData({ error: error.message });

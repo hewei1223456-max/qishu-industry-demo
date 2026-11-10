@@ -1,3 +1,4 @@
+import { decorateCertificate } from './certificate-policy.js';
 const normalize = (value) =>
   String(value || '')
     .normalize('NFKC')
@@ -25,14 +26,17 @@ export function startCertificatePrecheck(db, ai, user, application) {
       precheck = {
         ...precheck,
         ocrStatus: 'failed',
-        error: { code: error.code || 'OCR_QUEUE_FAILED', message: 'AI预审任务未创建，资料仍等待人工审核。' }
+        error: {
+          code: error.code || 'OCR_QUEUE_FAILED',
+          message: 'AI预审任务未创建，资料仍等待人工审核。'
+        }
       };
     }
   }
   return db.save('certifications', { ...application, precheck });
 }
 
-export function certificationView(db, application) {
+function refreshCertificateOcr(db, application) {
   const id = application.precheck?.jobId;
   if (!id) return application;
   const job = db.get('jobs', id);
@@ -81,4 +85,8 @@ export function certificationView(db, application) {
   if (JSON.stringify(precheck) !== JSON.stringify(application.precheck))
     return db.save('certifications', { ...application, precheck });
   return { ...application, precheck };
+}
+
+export function certificationView(db, application, { scope = 'front' } = {}) {
+  return decorateCertificate(db, refreshCertificateOcr(db, application), scope);
 }

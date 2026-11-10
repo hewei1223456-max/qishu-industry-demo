@@ -1,5 +1,6 @@
 import { AppError, audit } from './db.js';
 import { requireUser, safeUser } from './auth.js';
+import { persistentUser, projectIdentity } from './auth.js';
 
 const strings = { name: 80, shop: 120, city: 60, style: 60, customerAge: 60, retailPriceBand: 80 };
 const keys = [...Object.keys(strings), 'area', 'businessYears', 'operationNeeds'];
@@ -45,7 +46,12 @@ export function saveProfile(db, user, body) {
       throw new AppError(400, 'INVALID_PROFILE', '经营需求应为最多20项的文字列表。');
     fields.operationNeeds = [...new Set(body.operationNeeds.map((x) => x.trim()).filter(Boolean))];
   }
-  const updated = db.save('users', { ...user, ...fields });
+  const updated = db.save('users', { ...persistentUser(db, user), ...fields });
   audit(db, user, 'update-profile', user.id, { fields: Object.keys(fields) });
-  return { profile: profileOf(updated), user: safeUser(updated) };
+  return {
+    profile: profileOf(updated),
+    user: safeUser(
+      projectIdentity(db, updated, user.authScope || 'front', user.authRequestedRole || user.role)
+    )
+  };
 }

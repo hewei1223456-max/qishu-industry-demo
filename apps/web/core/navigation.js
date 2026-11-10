@@ -1,10 +1,17 @@
+import { isBackWorkspace } from './workspace.js';
+
 const positions = new Map();
 let current = '',
   currentIndex = 0;
 export function route() {
-  const raw = location.hash.slice(1) || '/info';
+  const raw = location.hash.slice(1) || (isBackWorkspace() ? '/login' : '/info');
   const [path, query = ''] = raw.split('?');
-  return { path, args: path.split('/').filter(Boolean), query: new URLSearchParams(query), key: raw };
+  return {
+    path,
+    args: path.split('/').filter(Boolean),
+    query: new URLSearchParams(query),
+    key: raw
+  };
 }
 export function go(path) {
   if (!path.startsWith('/')) path = '/' + path;

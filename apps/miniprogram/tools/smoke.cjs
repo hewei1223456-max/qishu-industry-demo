@@ -205,9 +205,16 @@ async function main() {
   const buyers = page('workspace');
   await buyers.loadBuyers();
   assert(buyers.data.supplier);
-  assert(buyers.data.buyers.length > 0);
-  assert.equal(typeof buyers.data.quota.remaining, 'number');
-  ok('厂家独立客户视角与服务端额度');
+  const supplierReady = app.globalData.user.verified === true;
+  if (supplierReady) {
+    assert(buyers.data.buyers.length > 0);
+    assert.equal(typeof buyers.data.quota.remaining, 'number');
+    ok('已审厂家独立客户视角与服务端额度');
+  } else {
+    assert(buyers.data.error);
+    assert.equal(buyers.data.buyers.length, 0);
+    ok('厂家材料未审完时找客户受到服务端限制');
+  }
   const channels = ui.contactChannels({
     available: true,
     channels: [
@@ -227,7 +234,7 @@ async function main() {
   await contactEditor.loadContact();
   assert(!contactEditor.data.error, contactEditor.data.error);
   const originalContact = structuredClone(contactEditor.data.publicContact);
-  try {
+  if (supplierReady) try {
     contactEditor.setData({
       publicContact: {
         wechat: 'native_smoke_contact',
@@ -270,6 +277,13 @@ async function main() {
       consent: originalContact.consent === true
     });
     await app.refresh();
+  }
+  else {
+    contactEditor.setData({publicContact:{wechat:'native_smoke_contact',phone:'18800000000',qrUrl:'',consent:true}});
+    await contactEditor.saveContact();
+    assert(contactEditor.data.error);
+    assert.deepEqual((await api.get('/profile/contact')).contact, originalContact);
+    ok('厂家未通过新审核时不能绕过门禁公开联络资料');
   }
   fontSize = 32;
   ui.sync(buyers, 2);

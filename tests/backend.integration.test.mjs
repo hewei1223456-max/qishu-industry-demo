@@ -11,6 +11,10 @@ const dataRoot = resolve('data');
 async function fixture(t, options = {}) {
   const dataDir = mkdtempSync(join(dataRoot, 'backend-test-'));
   const app = createApp({ dataDir, dbPath: ':memory:', ...options });
+  // These isolated business fixtures represent already reviewed suppliers; the new policy suite tests the real gate.
+  for (const user of app.db.list('users').filter((x) => x.role === 'supplier'))
+    app.db.save('users', { ...user, verified: true, certificationPolicyVersion: 2 });
+  const tokenScopes = new Map();
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
   t.after(async () => {
@@ -18,7 +22,7 @@ async function fixture(t, options = {}) {
     if (dataDir.startsWith(dataRoot + '\\')) rmSync(dataDir, { recursive: true, force: true });
   });
   async function request(path, method = 'GET', body, token) {
-    const headers = {};
+    const headers = { 'X-Qishu-Scope': tokenScopes.get(token) || body?.scope || 'front' };
     if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined && !(body instanceof FormData)) headers['Content-Type'] = 'application/json';
     const response = await fetch(base + '/api' + path, {
@@ -35,8 +39,10 @@ async function fixture(t, options = {}) {
     return { status: response.status, json, headers: response.headers };
   }
   const login = async (role, userId) => {
-    const response = await request('/auth/demo', 'POST', { role, userId });
+    const scope = role === 'admin' ? 'back' : 'front';
+    const response = await request('/auth/demo', 'POST', { role, userId, scope });
     assert.equal(response.status, 200);
+    tokenScopes.set(response.json.token, scope);
     return response.json.token;
   };
   return { app, base, request, login, dataDir };
@@ -49,7 +55,7 @@ test('auth: real server sessions support Bearer and demo login is disabled expli
   assert.ok(auth.json.token);
   const me = await f.request('/auth/me', 'GET', undefined, auth.json.token);
   assert.equal(me.json.user.id, 'owner-01');
-  assert.equal((await f.request('/admin/config', 'GET', undefined, auth.json.token)).status, 403);
+  assert.equal((await f.request('/admin/config', 'GET', undefined, auth.json.token)).status, 401);
   assert.equal((await f.request('/auth/wechat', 'POST', { code: 'not-real' })).status, 503);
   await f.request('/auth/logout', 'POST', {}, auth.json.token);
   assert.equal((await f.request('/auth/me', 'GET', undefined, auth.json.token)).json.user, null);
@@ -182,7 +188,11 @@ test('private KB and upload isolation: users cannot read other users records or 
     404
   );
   assert.equal(
-    (await fetch(f.base + file.url, { headers: { Authorization: `Bearer ${admin}` } })).status,
+    (
+      await fetch(f.base + file.url, {
+        headers: { Authorization: `Bearer ${admin}`, 'X-Qishu-Scope': 'back' }
+      })
+    ).status,
     200
   );
   const cert = await f.request(
@@ -286,7 +296,12 @@ test('ingestion bridge: confirmed content really publishes, products require hum
   assert.equal(retrieved.json.item.title, card.title);
   assert.equal((await bridge.publishCard(admin, card)).item.id, published.item.id);
   await assert.rejects(
-    () => bridge.publishCard(admin, { ...card, target: 'product', idempotencyKey: 'ingest:test:1:product' }),
+    () =>
+      bridge.publishCard(admin, {
+        ...card,
+        target: 'product',
+        idempotencyKey: 'ingest:test:1:product'
+      }),
     (e) => e.status === 400
   );
   const product = await bridge.publishCard(admin, {
@@ -490,7 +505,12 @@ test('private AI output previews: scoped temporary tickets allow native media wi
     ownerId: 'owner-01',
     task: 'image',
     status: 'completed',
-    result: { type: 'image', fileId: file.id, url: file.url, text: '测试用生成结果占位，不代表模型实测' }
+    result: {
+      type: 'image',
+      fileId: file.id,
+      url: file.url,
+      text: '测试用生成结果占位，不代表模型实测'
+    }
   });
   assert.equal((await fetch(f.base + file.url)).status, 401);
   const job = (await f.request('/jobs/generated-preview-test', 'GET', undefined, owner)).json.job;
@@ -552,7 +572,12 @@ test('certificate OCR workflow: automatically queues configured OCR, synchronize
   await f.request(
     '/admin/providers/openai',
     'PATCH',
-    { enabled: true, apiKey: 'not-a-real-key-for-ocr-test', model: 'test-ocr-model', capabilities: ['ocr'] },
+    {
+      enabled: true,
+      apiKey: 'not-a-real-key-for-ocr-test',
+      model: 'test-ocr-model',
+      capabilities: ['ocr']
+    },
     admin
   );
   const form = new FormData();
@@ -719,7 +744,13 @@ test('real account shapes: supplier user ID differs from company ID, published p
     await f.request(
       '/creator',
       'POST',
-      { kind: 'product', title: '区别主体与用户ID的测试货源', price: 99, moq: 6, supplyStatus: '现货' },
+      {
+        kind: 'product',
+        title: '区别主体与用户ID的测试货源',
+        price: 99,
+        moq: 6,
+        supplyStatus: '现货'
+      },
       supplier
     )
   ).json.item;

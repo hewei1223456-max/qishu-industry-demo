@@ -188,7 +188,11 @@ export function createAiService({
       controller.signal.addEventListener('abort', onAbort, { once: true });
     });
     async function work() {
-      const response = await fetchImpl(url, { ...options, redirect: 'error', signal: controller.signal });
+      const response = await fetchImpl(url, {
+        ...options,
+        redirect: 'error',
+        signal: controller.signal
+      });
       assertOpen();
       const declared = Number(response.headers.get('content-length'));
       if (declared > limits.response) throw new AppError(502, 'RESPONSE_TOO_LARGE', '模型响应超出限制。');
@@ -308,7 +312,9 @@ export function createAiService({
       if (file) {
         if (!file.mime.startsWith('image/'))
           throw new AppError(400, 'UNSUPPORTED_INPUT', '该渠道的本次能力只接受图片素材。');
-        parts.push({ inlineData: { mimeType: file.mime, data: readInput(file).toString('base64') } });
+        parts.push({
+          inlineData: { mimeType: file.mime, data: readInput(file).toString('base64') }
+        });
       }
       const data = await json(
         `${base}/models/${encodeURIComponent(model)}:generateContent`,
@@ -363,7 +369,11 @@ export function createAiService({
             text: 'AI生成媒体',
             notice: '渠道返回媒体链接；真实播放与生成效果仍需使用该供应商凭证验收。'
           }
-        : { type, text: typeof output === 'string' ? output : JSON.stringify(output), data: output };
+        : {
+            type,
+            text: typeof output === 'string' ? output : JSON.stringify(output),
+            data: output
+          };
     } else if (provider.adapter === 'openai') {
       if (['chat', 'diagnosis', 'ocr'].includes(job.task)) {
         let content = prompt;
@@ -401,7 +411,11 @@ export function createAiService({
           },
           provider
         );
-        result = { type: 'text', text: textValue(data.choices?.[0]?.message?.content), usage: data.usage };
+        result = {
+          type: 'text',
+          text: textValue(data.choices?.[0]?.message?.content),
+          usage: data.usage
+        };
       } else if (job.task === 'image') {
         if (file)
           throw new AppError(
@@ -428,9 +442,20 @@ export function createAiService({
           if (!/^[a-zA-Z0-9+/=\r\n]+$/.test(image.b64_json))
             throw new AppError(502, 'INVALID_PROVIDER_RESPONSE', '图像编码无效。');
           const file = saveGeneratedFile(user, Buffer.from(image.b64_json, 'base64'), 'image/png', '.png');
-          result = { type: 'image', url: file.url, fileId: file.id, text: 'AI生成图像', usage: data.usage };
+          result = {
+            type: 'image',
+            url: file.url,
+            fileId: file.id,
+            text: 'AI生成图像',
+            usage: data.usage
+          };
         } else if (image?.url)
-          result = { type: 'image', url: resultUrl(image.url), text: 'AI生成图像', usage: data.usage };
+          result = {
+            type: 'image',
+            url: resultUrl(image.url),
+            text: 'AI生成图像',
+            usage: data.usage
+          };
         else throw new AppError(502, 'INVALID_PROVIDER_RESPONSE', '图像渠道没有返回图像。');
       } else if (job.task === 'tts') {
         // TTS input 是待朗读正文，不能把私有系统提示词或知识库送去朗读。
@@ -490,7 +515,8 @@ export function createAiService({
     const config = getConfig();
     if (config.features?.ai === false)
       throw new AppError(503, 'MODULE_DISABLED', 'AI功能已暂停，输入与任务已保留。');
-    const user = db.get('users', job.ownerId);
+    const rawUser = db.get('users', job.ownerId);
+    const user = rawUser ? { ...rawUser, authScope: job.authScope } : null;
     if (!user || ['deleted', 'disabled', 'suspended'].includes(user.status))
       throw new AppError(403, 'USER_UNAVAILABLE', '任务所属账号暂不可用。');
     const providers = db.list('providers');
@@ -602,7 +628,12 @@ export function createAiService({
   }
   // 重启后重新入队。生成请求为至少一次执行；供应商幂等性需另行配置。
   for (const job of db.list('jobs').filter((j) => ['queued', 'running'].includes(j.status))) {
-    db.save('jobs', { ...job, status: 'queued', recoveredAt: now(), interrupted: job.status === 'running' });
+    db.save('jobs', {
+      ...job,
+      status: 'queued',
+      recoveredAt: now(),
+      interrupted: job.status === 'running'
+    });
     queue.push(job.id);
   }
   if (queue.length) setImmediate(drain);
@@ -630,6 +661,7 @@ export function createAiService({
         id: uid('job'),
         ownerId: user.id,
         companyId: user.companyId,
+        authScope: user.authScope,
         task,
         message: String(body.message || body.prompt || '').slice(0, 12000),
         profile: body.profile || null,
@@ -670,7 +702,13 @@ export function createAiService({
         });
         assertOpen();
         db.save('providers', { ...p, lastTestAt: now(), lastTestOk: true });
-        return { ok: true, result: data.result, providerId: id, model: data.model, attempts: data.attempts };
+        return {
+          ok: true,
+          result: data.result,
+          providerId: id,
+          model: data.model,
+          attempts: data.attempts
+        };
       } finally {
         active--;
         if (!closed) setImmediate(drain);

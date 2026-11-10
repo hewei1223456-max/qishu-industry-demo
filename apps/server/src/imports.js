@@ -150,7 +150,11 @@ export function importerBridge(db, ai) {
             value = parsed.cards[i];
           if (Number(value.index) !== unit.index || Number(value.segment) !== unit.segment)
             throw new AppError(502, 'INVALID_AI_RESULT', 'AI片段索引发生变化，未替换原结果。');
-          const result = classifications.get(unit.index) || { tags: [], styles: [], categories: [] };
+          const result = classifications.get(unit.index) || {
+            tags: [],
+            styles: [],
+            categories: []
+          };
           if (Array.isArray(value.tags))
             result.tags.push(...value.tags.filter((x) => typeof x === 'string' && x.length <= 80));
           if (typeof value.style === 'string' && value.style.length <= 80 && value.style)

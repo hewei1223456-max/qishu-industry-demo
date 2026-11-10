@@ -25,6 +25,7 @@ async function setup(t, officialHandler) {
   });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${app.server.address().port}`;
+  const tokenScopes = new Map();
   t.after(async () => {
     await app.close();
     if (dataDir.startsWith(root + '\\')) rmSync(dataDir, { recursive: true, force: true });
@@ -32,10 +33,16 @@ async function setup(t, officialHandler) {
   const req = async (path, body, token, method = 'POST') => {
     const r = await fetch(base + '/api' + path, {
       method,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Qishu-Scope': tokenScopes.get(token) || body?.scope || 'front',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
       body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body)
     });
-    return { status: r.status, json: await r.json(), headers: r.headers };
+    const json = await r.json();
+    if (json.token) tokenScopes.set(json.token, json.scope);
+    return { status: r.status, json, headers: r.headers };
   };
   return { app, req, calls };
 }
@@ -59,7 +66,11 @@ test('WeChat official protocol: login creates server identity, phone code valida
       assert.ok(JSON.parse(options.body).code);
       return {
         errcode: 0,
-        phone_info: { purePhoneNumber: '13800000001', countryCode: '86', watermark: { appid: 'wx-app-test' } }
+        phone_info: {
+          purePhoneNumber: '13800000001',
+          countryCode: '86',
+          watermark: { appid: 'wx-app-test' }
+        }
       };
     }
     throw Error('unexpected endpoint');
@@ -102,7 +113,7 @@ test('WeChat admin: only verified matching phone whitelist grants permission; re
             }
           }
   );
-  const admin = (await f.req('/auth/demo', { role: 'admin' })).json.token;
+  const admin = (await f.req('/auth/demo', { role: 'admin', scope: 'back' })).json.token;
   const grant = await f.req(
     '/admin/admins',
     { name: '已授权运营', phone: '13800000002', permissions: ['*'] },
@@ -110,13 +121,28 @@ test('WeChat admin: only verified matching phone whitelist grants permission; re
   );
   assert.equal(grant.status, 201);
   assert.equal(grant.json.item.bindingVerified, false);
-  const login = await f.req('/auth/wechat', { code: 'admin-login-code', role: 'admin' });
+  const login = await f.req('/auth/wechat', {
+    code: 'admin-login-code',
+    role: 'admin',
+    scope: 'back'
+  });
   assert.equal(login.json.user.role, 'owner');
   assert.equal((await f.req('/admin/config', undefined, login.json.token, 'GET')).status, 403);
   const phone = await f.req('/auth/phone', { code: 'admin-phone-code' }, login.json.token);
   assert.equal(phone.json.user.role, 'admin');
+  assert.equal(f.app.db.get('users', login.json.user.id).role, 'owner');
   assert.equal(phone.json.user.adminGrantId, grant.json.item.id);
   assert.equal((await f.req('/admin/config', undefined, phone.json.token, 'GET')).status, 200);
+  const front = await f.req('/auth/wechat', {
+    code: 'same-person-front-owner',
+    role: 'owner',
+    scope: 'front'
+  });
+  assert.equal(front.json.user.role, 'owner');
+  await f.req('/profile', { name: '前后台同人资料' }, phone.json.token, 'PATCH');
+  assert.equal(f.app.db.get('users', login.json.user.id).role, 'owner');
+  assert.equal((await f.req('/auth/me', undefined, front.json.token, 'GET')).json.user.role, 'owner');
+  assert.equal((await f.req('/auth/me', undefined, phone.json.token, 'GET')).json.user.role, 'admin');
   await f.req('/admin/admins/' + grant.json.item.id, {}, admin, 'DELETE');
   assert.equal((await f.req('/admin/config', undefined, phone.json.token, 'GET')).status, 403);
 });

@@ -3,7 +3,13 @@ export function createMediaPreviews(db, secrets) {
   function urlFor(file, scope = 'generated') {
     const expiresAt = Date.now() + lifetime;
     const ticket = secrets.encrypt(
-      JSON.stringify({ kind: 'media-preview', scope, fileId: file.id, ownerId: file.ownerId, expiresAt })
+      JSON.stringify({
+        kind: 'media-preview',
+        scope,
+        fileId: file.id,
+        ownerId: file.ownerId,
+        expiresAt
+      })
     );
     return {
       url: `/api/files/${file.id}?ticket=${encodeURIComponent(ticket)}`,
@@ -15,7 +21,10 @@ export function createMediaPreviews(db, secrets) {
     const file = db.get('files', job.result.fileId);
     if (!file || file.public || file.purpose !== 'generated' || file.ownerId !== job.ownerId) return job;
     const preview = urlFor(file);
-    return { ...job, result: { ...job.result, url: preview.url, previewExpiresAt: preview.expiresAt } };
+    return {
+      ...job,
+      result: { ...job.result, url: preview.url, previewExpiresAt: preview.expiresAt }
+    };
   }
   function permits(file, ticket) {
     if (!ticket || !file || !['generated', 'contact'].includes(file.purpose) || ticket.length > 2000)

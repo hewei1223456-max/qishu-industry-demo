@@ -2,6 +2,8 @@ export interface MediaFile {
   path: string;
   name: string;
   type: 'image' | 'video' | 'audio' | 'file' | 'license';
+  duration?: number | null;
+  size?: number;
 }
 export interface PlatformResponse {
   statusCode: number;
@@ -22,6 +24,8 @@ export interface PlatformAdapter {
     formData?: Record<string, string>;
     header?: Record<string, string>;
   }): Promise<PlatformResponse>;
+  download(options:{url:string;timeout?:number;header?:Record<string,string>}):Promise<{statusCode:number;tempFilePath?:string}>;
+  clearDownloads():Promise<void>;
   read(key: string): unknown;
   write(key: string, value: unknown): void;
   remove(key: string): void;
@@ -36,6 +40,8 @@ export interface PlatformAdapter {
   confirm(title: string, content: string): Promise<{ confirm: boolean; cancel: boolean }>;
   login(): Promise<{ code: string }>;
   choose(kind: MediaFile['type']): Promise<MediaFile>;
+  chooseMany(kind:'image'|'video', count:number): Promise<MediaFile[]>;
+  captureVideo(): Promise<MediaFile>;
   record(): Promise<MediaFile>;
   stopRecord(): void;
   playAudio(url: string): Promise<unknown>;
